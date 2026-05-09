@@ -1,5 +1,6 @@
 from django.db import models
 from users.models import User
+from subjects.models import Subject
 
 class Student(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -7,7 +8,6 @@ class Student(models.Model):
     course = models.CharField(max_length=100)
     year = models.IntegerField()
     section = models.CharField(max_length=10)
-
     def __str__(self):
         return f"{self.user.first_name} {self.user.last_name} ({self.roll_no})"
 
@@ -18,18 +18,6 @@ class Teacher(models.Model):
     def __str__(self):
         return f"Prof. {self.user.first_name} {self.user.last_name}"
 
-# 4) Subject
-class Subject(models.Model):
-    name = models.CharField(max_length=200)
-    course = models.CharField(max_length=100)
-    
-    # We use SET_NULL instead of CASCADE here. 
-    # If a teacher leaves the college and is deleted from the DB, 
-    # we don't want the Subject itself to be deleted. We just want it to be unassigned.
-    teacher = models.ForeignKey('students.Teacher', on_delete=models.SET_NULL, null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.name} - {self.course}"
 
 class Routine(models.Model):
     DAY_CHOICES = (
@@ -41,19 +29,15 @@ class Routine(models.Model):
         ('saturday', 'Saturday'),
         ('sunday', 'Sunday'),
     )
-    
     # Here we use CASCADE. If a Subject is completely removed from the curriculum, 
     # all its timetable slots should automatically be destroyed too.
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
-    
     day = models.CharField(max_length=15, choices=DAY_CHOICES)
     start_time = models.TimeField()
-    end_time = models.TimeField()
-
+    end_time = models.TimeField()  
     def __str__(self):
         return f"{self.subject.name} - {self.get_day_display()} ({self.start_time} to {self.end_time})"
-
-
+    
 # 6) ExamRoutine
 class ExamRoutine(models.Model):
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)

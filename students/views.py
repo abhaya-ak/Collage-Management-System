@@ -1,10 +1,18 @@
 from rest_framework import viewsets, permissions
-from .models import Student, Routine, Result, LeaveRequest
+from .models import Student, Routine, Result, LeaveRequest, Teacher
+from attendance.models import Attendance
+from notices.models import Notice
+from feedback.models import Feedback
+
 from .serializers import (
     StudentProfileSerializer, 
     RoutineSerializer, 
     ResultSerializer, 
-    LeaveRequestSerializer
+    LeaveRequestSerializer, 
+    TeacherRoutineSerializer, 
+    MarkAttendanceSerializer, 
+    NoticeSerializer, 
+    TeacherFeedbackSerializer
 )
 
 class StudentProfileViewSet(viewsets.ReadOnlyModelViewSet):
@@ -41,3 +49,44 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         # Automatically attach the logged-in student to the leave request
         student = Student.objects.get(user=self.request.user)
         serializer.save(student=student)
+
+
+class TeacherRoutineViewSet(viewsets.ReadOnlyModelViewSet):
+    """GET /teacher-routines/ -> Lists routines only for the logged-in teacher"""
+    serializer_class = TeacherRoutineSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Security: Find the teacher profile of the logged-in user, 
+        # then return only routines linked to subjects taught by them.
+        return Routine.objects.filter(subject__teacher__user=self.request.user)
+
+class AttendanceViewSet(viewsets.ModelViewSet):
+    """POST /attendance/ -> Mark attendance"""
+    serializer_class = MarkAttendanceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = Attendance.objects.all()
+
+    def perform_create(self, serializer):
+        # Security Rule: Automatically attach the logged-in teacher as the 'marked_by' person.
+        # This prevents Teacher A from forging attendance as Teacher B.
+        teacher = Teacher.objects.get(user=self.request.user)
+        serializer.save(marked_by=teacher)
+
+class NoticeViewSet(viewsets.ReadOnlyModelViewSet):
+    """GET /notices/ -> List notices"""
+    serializer_class = NoticeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Teachers should only see notices meant for 'ALL' or 'TEACHERS'
+        return Notice.objects.filter(target_audience__in=['ALL', 'TEACHERS']).order_by('-date_posted')
+
+class TeacherFeedbackViewSet(viewsets.ReadOnlyModelViewSet):
+    """GET /feedback/ -> View feedback directed at this teacher"""
+    serializer_class = TeacherFeedbackSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Security: Teachers can only read feedback explicitly targeted at them
+        return Feedback.objects.filter(target_teacher__user=self.request.user).order_by('-submitted_at')

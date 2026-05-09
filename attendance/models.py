@@ -7,7 +7,6 @@ class Attendance(models.Model):
         ('absent', 'Absent'),
         ('leave', 'Leave'),
     )
-    
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     date = models.DateField()
