@@ -14,7 +14,7 @@ class Student(models.Model):
 class Teacher(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     department = models.CharField(max_length=100)
-
+    
     def __str__(self):
         return f"Prof. {self.user.first_name} {self.user.last_name}"
 
