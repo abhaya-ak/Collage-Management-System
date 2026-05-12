@@ -1,5 +1,5 @@
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .serializers import EmailTokenObtainPairSerializer
+from .serializers import UsernameTokenObtainPairSerializer
 
-class LoginAPIView(TokenObtainPairView):
-    serializer_class = EmailTokenObtainPairSerializer
+class UsernameLoginView(TokenObtainPairView):
+    serializer_class = UsernameTokenObtainPairSerializer
