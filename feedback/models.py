@@ -1,5 +1,6 @@
 from django.db import models 
 from students.models import Student 
+from django.conf import settings
 
 class Feedback(models.Model):
     TYPE_CHOICES = (
@@ -9,11 +10,11 @@ class Feedback(models.Model):
     )
 
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    # teacher is nullable because a student might be leaving feedback about the college itself
-    teacher = models.ForeignKey('students.Teacher', on_delete=models.SET_NULL, null=True, blank=True)
     
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     message = models.TextField()
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    target_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
     def __str__(self):
         target = f"to {self.teacher.user.first_name}" if self.teacher else "to College"

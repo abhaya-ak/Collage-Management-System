@@ -6,7 +6,7 @@ class Subject(models.Model):
     course = models.CharField(max_length=100)
 
     teacher = models.ForeignKey(
-        'students.Teacher',   # ✅ correct because Teacher lives in students app
+        'students.Teacher',   # ✅ correct because Teacher lives in students app //
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

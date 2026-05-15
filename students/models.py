@@ -1,9 +1,10 @@
 from django.db import models
 from users.models import User
 from subjects.models import Subject
+from django.conf import settings
 
 class Student(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     roll_no = models.CharField(max_length=50, unique=True)
     course = models.CharField(max_length=100)
     year = models.IntegerField()
@@ -12,7 +13,7 @@ class Student(models.Model):
         return f"{self.user.first_name} {self.user.last_name} ({self.roll_no})"
 
 class Teacher(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     department = models.CharField(max_length=100)
     
     def __str__(self):
@@ -37,8 +38,8 @@ class Routine(models.Model):
     end_time = models.TimeField()  
     def __str__(self):
         return f"{self.subject.name} - {self.get_day_display()} ({self.start_time} to {self.end_time})"
-    
-# 6) ExamRoutine
+
+'''
 class ExamRoutine(models.Model):
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     exam_date = models.DateField()
@@ -46,10 +47,11 @@ class ExamRoutine(models.Model):
 
     def __str__(self):
         return f"{self.subject.name} Exam on {self.exam_date}"
+'''  
 
 
 # 7) Result
-class Result(models.Model):
+'''class Result(models.Model):
     # If a student or subject is removed, their specific results should also be removed
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
@@ -59,6 +61,7 @@ class Result(models.Model):
 
     def __str__(self):
         return f"{self.student.user.first_name} - {self.subject.name} ({self.grade})"
+        '''
 
 # 9) LeaveRequest
 class LeaveRequest(models.Model):

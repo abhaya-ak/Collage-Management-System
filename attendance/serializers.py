@@ -1,4 +1,4 @@
-from rest_framework import serializers
+'''from rest_framework import serializers
 from .models import Attendance
 
 class AttendanceWriteSerializer(serializers.ModelSerializer):
@@ -26,4 +26,4 @@ class AttendanceReadSerializer(serializers.ModelSerializer):
     def get_teacher_name(self, obj):
         if obj.marked_by:
             return f"{obj.marked_by.user.first_name} {obj.marked_by.user.last_name}"
-        return "Unknown"
+        return "Unknown"'''

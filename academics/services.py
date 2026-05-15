@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from .models import Subject
-from users.models import Teacher  # Assuming Teacher is in a users app or similar
+from students.models import Teacher  # Assuming Teacher is in a users app or similar
 
 def create_subject(*, name: str, course: str, code: str, teacher_id: int = None) -> Subject:
     """
