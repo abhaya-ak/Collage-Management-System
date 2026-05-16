@@ -1,5 +1,6 @@
-'''from rest_framework import viewsets, permissions
-from .models import Student, Routine, Result, LeaveRequest, Teacher
+from rest_framework import viewsets, permissions
+from .models import Student, LeaveRequest
+from academics.models import Routine
 from attendance.models import Attendance
 from notices.models import Notice
 from feedback.models import Feedback
@@ -34,7 +35,7 @@ class StudentResultViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         # Security: Only return results that belong to the user making the request
-        return Result.objects.filter(student__user=self.request.user)
+        return 'academics.Result'.objects.filter(student__user=self.request.user)
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
     """GET /leaves/ -> List leaves | POST /leaves/ -> Create leave request"""
@@ -89,4 +90,4 @@ class TeacherFeedbackViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         # Security: Teachers can only read feedback explicitly targeted at them
-        return Feedback.objects.filter(target_teacher__user=self.request.user).order_by('-submitted_at')'''
+        return Feedback.objects.filter(target_teacher__user=self.request.user).order_by('-submitted_at')

@@ -1,9 +1,7 @@
 from django.db import models
-# 10) FeeStructure
-
 from django.core.validators import MinValueValidator
 from decimal import Decimal
-
+from django.conf import settings
 
 class FeeStructure(models.Model):
     """
@@ -11,13 +9,12 @@ class FeeStructure(models.Model):
     Admin creates one of these; StudentFee rows are generated from it.
     """
     course = models.ForeignKey(
-        "academics.Course",
+        "academics.Faculty",
         on_delete=models.PROTECT,
         related_name="fee_structures",
     )
     year = models.PositiveSmallIntegerField(help_text="Academic year, e.g. 1, 2, 3")
     semester = models.PositiveSmallIntegerField(help_text="Semester number, e.g. 1, 2")
-
     tuition_fee = models.DecimalField(
         max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))]
     )
@@ -34,9 +31,7 @@ class FeeStructure(models.Model):
         validators=[MinValueValidator(Decimal("0.00"))],
         help_text="Optional catch-all for small charges",
     )
-
     due_date = models.DateField(help_text="Default due date for this fee plan")
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -49,7 +44,6 @@ class FeeStructure(models.Model):
     def total(self) -> Decimal:
         """Sum of all fee components."""
         return self.tuition_fee + self.exam_fee + self.library_fee + self.miscellaneous_fee
-
     def __str__(self):
         return f"{self.course} | Year {self.year} Sem {self.semester}"
 
@@ -59,17 +53,17 @@ class StudentFee(models.Model):
     The individual bill generated for one student from a FeeStructure.
     Tracks how much they owe and how much has been paid so far.
     """
-
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         PARTIAL = "partial", "Partially Paid"
         PAID = "paid", "Fully Paid"
 
     student = models.ForeignKey(
-        "users.Student",
+        'students.Student',
         on_delete=models.PROTECT,
         related_name="fees",
     )
+    
     fee_structure = models.ForeignKey(
         FeeStructure,
         on_delete=models.PROTECT,
@@ -101,7 +95,7 @@ class StudentFee(models.Model):
         help_text="Admin notes, e.g. scholarship waiver or late fine",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -113,7 +107,7 @@ class StudentFee(models.Model):
     def balance_due(self) -> Decimal:
         return self.total_amount - self.amount_paid
 
-    def recompute_status(self) -> None:
+    '''def recompute_status(self) -> None:
         """
         Call this after every payment to keep status in sync.
         Never update status manually — always go through here.
@@ -128,13 +122,13 @@ class StudentFee(models.Model):
     def __str__(self):
         return f"{self.student} | {self.fee_structure} | {self.status}"
 
-
-def payment_screenshot_path(instance, filename):
-    """
-    Organise uploads by student so they don't pile into one flat folder.
-    Result: media/payments/student_<id>/<filename>
-    """
-    return f"payments/student_{instance.student_fee.student_id}/{filename}"
+    def payment_screenshot_path(instance, filename):
+        """
+        Organise uploads by student so they don't pile into one flat folder.
+        Result: media/payments/student_<id>/<filename>
+        """
+        return f"payments/student_{instance.student_fee.student_id}/{filename}"
+        '''
 
 
 class Payment(models.Model):
@@ -142,7 +136,6 @@ class Payment(models.Model):
     A single transaction record — one Payment row per payment event.
     Multiple Payment rows can satisfy one StudentFee.
     """
-
     class Method(models.TextChoices):
         CASH = "cash", "Cash"
         QR = "qr", "QR / eSewa / Khalti"
@@ -154,11 +147,11 @@ class Payment(models.Model):
         VERIFIED = "verified", "Verified"
         REJECTED = "rejected", "Rejected"
 
-    student_fee = models.ForeignKey(
+    '''student_fee = models.ForeignKey(
         StudentFee,
         on_delete=models.PROTECT,
         related_name="payments",
-    )
+    )'''
 
     amount = models.DecimalField(
         max_digits=10,
@@ -179,20 +172,19 @@ class Payment(models.Model):
     )
 
     # The screenshot upload — proof of payment
-    screenshot = models.ImageField(
+    '''screenshot = models.ImageField(
         upload_to=payment_screenshot_path,
         null=True,
         blank=True,
         help_text="Payment proof screenshot (required for QR/bank transfers)",
-    )
+    )'''
 
     verification_status = models.CharField(
         max_length=10,
         choices=VerificationStatus.choices,
         default=VerificationStatus.PENDING,
     )
-    verified_by = models.ForeignKey(
-        "users.User",
+    verified_by = models.ForeignKey(settings.AUTH_USER_MODEL,         
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -205,7 +197,6 @@ class Payment(models.Model):
         blank=True,
         help_text="Reason for rejection or verification note",
     )
-
     paid_at = models.DateTimeField(help_text="When the student claims payment was made")
     created_at = models.DateTimeField(auto_now_add=True)
 

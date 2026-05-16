@@ -13,7 +13,7 @@ class Notice(models.Model):
     content = models.TextField()
     
     # auto_now_add=True automatically sets this to the exact date/time it was created
-    date_posted = models.DateTimeField(auto_now_add=True)
+    #date_posted = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"[{self.get_type_display()}] {self.title}"

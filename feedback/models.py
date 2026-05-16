@@ -1,6 +1,7 @@
 from django.db import models 
 from students.models import Student 
 from django.conf import settings
+from django.utils import timezone
 
 class Feedback(models.Model):
     TYPE_CHOICES = (
@@ -8,13 +9,11 @@ class Feedback(models.Model):
         ('suggestion', 'Suggestion'),
         ('feedback', 'Feedback'),
     )
-
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     message = models.TextField()
-    submitted_at = models.DateTimeField(auto_now_add=True)
-    target_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    submitted_at = models.DateTimeField(default=timezone.now)
+    target_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, default="teacher")
 
     def __str__(self):
         target = f"to {self.teacher.user.first_name}" if self.teacher else "to College"

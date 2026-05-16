@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Student, Subject, Routine, Result, LeaveRequest
+from .models import Student, Routine, LeaveRequest, Teacher
 from .models import Routine
 from attendance.models import Attendance
 from notices.models import Notice

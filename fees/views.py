@@ -1,12 +1,12 @@
 from rest_framework import generics, permissions
 from .models import Payment
-from .serializers import FeePaymentWriteSerializer, FeePaymentReadSerializer
+#from .serializers import FeePaymentWriteSerializer, FeePaymentReadSerializer
 
 class PayFeeAPIView(generics.CreateAPIView):
     """
     POST /api/v1/fees/pay/
     """
-    serializer_class = FeePaymentWriteSerializer
+    serializer_class = 'FeePaymentWriteSerializer'
     
     # Only staff/admins should be able to manually record arbitrary fee payments.
     # (If integrating Stripe/PayPal for students, this logic changes to verify webhooks).
@@ -20,7 +20,7 @@ class StudentFeeHistoryAPIView(generics.ListAPIView):
     """
     GET /api/v1/fees/student/{id}/
     """
-    serializer_class = FeePaymentReadSerializer
+    serializer_class = 'FeePaymentReadSerializer'
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
