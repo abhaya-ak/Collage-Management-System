@@ -13,8 +13,9 @@ class Faculty(models.Model):
     )
     description = models.TextField(blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
+
 
     class Meta:
         ordering = ["name"]
@@ -56,8 +57,9 @@ class Routine(models.Model):
         help_text="Deactivate rather than delete when a slot is removed",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
+
 
     '''class Meta:
         ordering = ["day_of_week", "start_time"]
@@ -105,8 +107,8 @@ class ExamRoutine(models.Model):
         help_text="e.g. Open book, bring scientific calculator",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
 
 '''    class Meta:
         ordering = ["exam_date", "start_time"]
@@ -171,8 +173,8 @@ class Result(models.Model):
         help_text="e.g. Medical exemption, Withheld, Paper under review",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
 
 '''    class Meta:
         unique_together = ("student", "exam_routine")
