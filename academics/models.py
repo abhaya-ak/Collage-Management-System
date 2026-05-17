@@ -6,11 +6,6 @@ class Faculty(models.Model):
         max_length=100,
         help_text="Science",
     )
-    code = models.CharField(
-        max_length=20,
-        unique=True,
-        help_text="e.g. BSC_CS, BBA",
-    )
     description = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True, null=True)

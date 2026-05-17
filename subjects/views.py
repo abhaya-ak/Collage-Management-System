@@ -17,7 +17,6 @@ class SubjectViewSet(viewsets.ModelViewSet):
         # Use Write Serializer for modifying data (POST, PUT, PATCH)
         if self.action in ['create', 'update', 'partial_update']:
             return SubjectWriteSerializer
-            
         # Use Read Serializer for viewing data (GET)
         return SubjectReadSerializer
 

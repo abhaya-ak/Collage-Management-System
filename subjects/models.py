@@ -1,8 +1,8 @@
 # subjects/models.py
 from django.db import models 
 
+# 
 class Subject(models.Model):
-
     teacher = models.ForeignKey(
     'students.Teacher',
     on_delete=models.SET_NULL,  # teacher deleted → subject stays, teacher = null
@@ -28,9 +28,6 @@ class Subject(models.Model):
     null=True,      # temporary - remove after migration
     blank=True,     # temporary - remove after migration
     )
-
-    # Nullable — a subject can exist before a teacher is assigned
-
     full_marks = models.PositiveSmallIntegerField(
         default=100,
         help_text="Total marks for this subject",
