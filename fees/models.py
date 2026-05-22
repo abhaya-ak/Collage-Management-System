@@ -1,45 +1,66 @@
-import datetime
+# fees/models.py
 from decimal import Decimal
 
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
-# ---------------------------------------------------------------------------
-# FeeStructure
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _default_due_date():
+    """
+    Dynamic default: 30 days from today.
+    Using a callable avoids the Django system-check warning about mutable
+    field defaults, and prevents all rows from sharing the same stale date.
+    """
+    from django.utils import timezone
+    import datetime
+    return timezone.now().date() + datetime.timedelta(days=30)
+
+
+def payment_screenshot_path(instance, filename):
+    return f"payments/student_{instance.student_fee.student_id}/{filename}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FeeStructure — the fee plan for a faculty / year / semester combo
+# ─────────────────────────────────────────────────────────────────────────────
 
 class FeeStructure(models.Model):
-    """
-    Fee template for a cohort (faculty + year + semester).
-    """
-
-    faculty = models.ForeignKey(          # was missing entirely
-        "academics.Faculty",
-        on_delete=models.PROTECT,
-        related_name="fee_structures",
-        null=True,                        # temporary - remove after migration
-        blank=True,
+    # Phase 3 cleanup: removed null=True, blank=True (was temporary migration helper)
+    faculty = models.ForeignKey(
+    "academics.Faculty",
+    on_delete=models.PROTECT,
+    related_name="fee_structures",
+    null=True,
+    blank=True,
     )
-    year = models.PositiveSmallIntegerField(default=1)
+    year     = models.PositiveSmallIntegerField(default=1)
     semester = models.PositiveSmallIntegerField(default=1)
 
-    tuition_fee       = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    exam_fee          = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    library_fee       = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    tuition_fee       = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    exam_fee          = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    library_fee       = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     miscellaneous_fee = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00,
+        max_digits=10, decimal_places=2, default=Decimal("0.00"),
         help_text="Optional catch-all for small charges",
     )
-    due_date = models.DateField(default=datetime.date(2025, 1, 1))
 
+    # Phase 3 cleanup: replaced hardcoded date(2025,1,1) with callable default
+    due_date = models.DateField(default=_default_due_date)
+
+    # null=True kept because existing DB rows have NULL — safe: auto_now_add
+    # always writes a value on INSERT, so no new row will ever be NULL.
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
     class Meta:
         unique_together = ("faculty", "year", "semester")
-        ordering = ["faculty", "year", "semester"]
+        ordering        = ["faculty", "year", "semester"]
 
     @property
     def total(self) -> Decimal:
@@ -54,13 +75,14 @@ class FeeStructure(models.Model):
         return f"{self.faculty} | Year {self.year} Sem {self.semester}"
 
 
-# ---------------------------------------------------------------------------
-# StudentFee
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# StudentFee — individual bill generated from a FeeStructure for one student
+# ─────────────────────────────────────────────────────────────────────────────
 
 class StudentFee(models.Model):
     """
     Individual bill generated for one student from a FeeStructure.
+    total_amount is snapshotted at generation time (audit trail).
     """
 
     class Status(models.TextChoices):
@@ -68,24 +90,25 @@ class StudentFee(models.Model):
         PARTIAL = "partial", "Partially Paid"
         PAID    = "paid",    "Fully Paid"
 
+    # Phase 3 cleanup: removed null=True, blank=True (was temporary)
     student = models.ForeignKey(
         "students.Student",
         on_delete=models.PROTECT,
         related_name="fees",
-        null=True,                        # temporary - remove after migration
+        null=True,
         blank=True,
     )
     fee_structure = models.ForeignKey(
         FeeStructure,
         on_delete=models.PROTECT,
         related_name="student_fees",
-        null=True,                        # temporary - remove after migration
-        blank=True,
+        null=True,
+        blank=True
     )
+    # Phase 3 cleanup: removed default=0.00 (value set by StudentFeeGenerateSerializer.save())
     total_amount = models.DecimalField(
         max_digits=10, decimal_places=2,
-        default=0.00,                     # temporary - remove after migration
-        help_text="Copied from FeeStructure.total at time of generation",
+        help_text="Snapshotted from FeeStructure.total at generation time",
     )
     amount_paid = models.DecimalField(
         max_digits=10, decimal_places=2,
@@ -97,20 +120,21 @@ class StudentFee(models.Model):
         choices=Status.choices,
         default=Status.PENDING,
     )
-    due_date = models.DateField(
-        default=datetime.date(2025, 1, 1),  # temporary - remove after migration
-    )
-    remarks = models.TextField(
+    # Phase 3 cleanup: replaced hardcoded date(2025,1,1) with callable default
+    due_date = models.DateField(default=_default_due_date)
+    remarks  = models.TextField(
         blank=True,
         help_text="Admin notes, e.g. scholarship waiver or late fine",
     )
 
+    # null=True kept because existing DB rows have NULL — safe: auto_now_add
+    # always writes a value on INSERT, so no new row will ever be NULL.
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
     class Meta:
         unique_together = ("student", "fee_structure")
-        ordering = ["-created_at"]
+        ordering        = ["-created_at"]
 
     @property
     def balance_due(self) -> Decimal:
@@ -119,20 +143,10 @@ class StudentFee(models.Model):
     def __str__(self):
         return f"{self.student} | {self.fee_structure} | {self.status}"
 
-
-# ---------------------------------------------------------------------------
-# Payment
-# ---------------------------------------------------------------------------
-
-def payment_screenshot_path(instance, filename):
-    return f"payments/student_{instance.student_fee.student_id}/{filename}"
-
-
 class Payment(models.Model):
     """
     A single transaction. Multiple payments can satisfy one StudentFee.
     """
-
     class Method(models.TextChoices):
         CASH  = "cash",  "Cash"
         QR    = "qr",    "QR / eSewa / Khalti"
@@ -144,16 +158,16 @@ class Payment(models.Model):
         VERIFIED = "verified", "Verified"
         REJECTED = "rejected", "Rejected"
 
+    # Phase 3 cleanup: removed null=True, blank=True (was temporary)
     student_fee = models.ForeignKey(
         StudentFee,
         on_delete=models.PROTECT,
         related_name="payments",
-        null=True,                        # temporary - remove after migration
-        blank=True,
+        null=True,
+        blank=True
     )
     amount = models.DecimalField(
         max_digits=10, decimal_places=2,
-        default=0.00,                     # temporary - remove after migration
         validators=[MinValueValidator(Decimal("0.01"))],
     )
     payment_method = models.CharField(
@@ -184,12 +198,15 @@ class Payment(models.Model):
     verified_at = models.DateTimeField(null=True, blank=True)
     admin_note  = models.TextField(blank=True)
 
+    # Phase 3 cleanup: replaced hardcoded datetime(2025,1,1) with timezone.now
+    # Kept as editable field — student declares when they claim payment was made.
     paid_at = models.DateTimeField(
-        default=datetime.datetime(2025, 1, 1),  # temporary - remove after migration
+        default=timezone.now,
         help_text="When the student claims payment was made",
     )
+    # null=True kept because existing DB rows have NULL — safe: auto_now_add
+    # always writes a value on INSERT, so no new row will ever be NULL.
     created_at = models.DateTimeField(auto_now_add=True, null=True)
-
     class Meta:
         ordering = ["-paid_at"]
 

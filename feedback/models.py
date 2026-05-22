@@ -13,8 +13,8 @@ class Feedback(models.Model):
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     message = models.TextField()
     submitted_at = models.DateTimeField(default=timezone.now)
-    target_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  null=True, blank=True)
+    target_teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
-        target = f"to {self.teacher.user.first_name}" if self.teacher else "to College"
+        target = f"to {self.target_teacher.first_name}" if self.target_teacher else "to College"
         return f"{self.get_type_display()} from {self.student.roll_no} {target}"

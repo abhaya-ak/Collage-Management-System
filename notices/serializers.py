@@ -1,6 +1,7 @@
 # notices/serializers.py
 from rest_framework import serializers
 from .models import Notice
+from .services import NoticeService
 
 
 # ---------------------------------------------------------------------------
@@ -60,39 +61,24 @@ class NoticeWriteSerializer(serializers.ModelSerializer):
     # --- Field-level validation -------------------------------------------
 
     def validate_title(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Title cannot be blank.")
-        if len(value) < 5:
-            raise serializers.ValidationError(
-                "Title is too short. Write something meaningful."
-            )
-        return value
+        try:
+            return NoticeService.validate_title(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
     def validate_content(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Notice content cannot be blank.")
-        return value
-
-    # --- Object-level validation ------------------------------------------
+        try:
+            return NoticeService.validate_content(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
     def validate(self, attrs):
-        """
-        Emergency notices must be sent to everyone — not a subset.
-        A targeted emergency defeats the purpose.
-        """
         notice_type     = attrs.get('type',            getattr(self.instance, 'type',            None))
         target_audience = attrs.get('target_audience', getattr(self.instance, 'target_audience', None))
-
-        if (notice_type == Notice.Type.EMERGENCY
-                and target_audience != Notice.Audience.ALL):
-            raise serializers.ValidationError({
-                'target_audience': (
-                    "Emergency notices must target everyone (ALL). "
-                    "Restrict the audience only for non-emergency types."
-                )
-            })
+        try:
+            NoticeService.validate_emergency_audience(notice_type, target_audience)
+        except ValueError as e:
+            raise serializers.ValidationError({'target_audience': str(e)})
         return attrs
 
     def to_representation(self, instance):

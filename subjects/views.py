@@ -1,29 +1,37 @@
-from rest_framework import viewsets, permissions
+# subjects/views.py
+
+from rest_framework import viewsets
+
+from auth_core.permissions import HasPermission, IsAdminRole
+
 from .models import Subject
 from .serializers import SubjectReadSerializer, SubjectWriteSerializer
 
+
 class SubjectViewSet(viewsets.ModelViewSet):
     """
-    Handles all 5 endpoints:
-    GET /api/v1/subjects/ -> List subjects
-    POST /api/v1/subjects/ -> Create subject
-    GET /api/v1/subjects/{id}/ -> Subject detail
-    PUT /api/v1/subjects/{id}/ -> Update subject
-    DELETE /api/v1/subjects/{id}/ -> Delete subject
+    GET    /api/v1/subjects/            list    (authenticated)
+    GET    /api/v1/subjects/{id}/       detail  (authenticated)
+    POST   /api/v1/subjects/            create  (admin only)
+    PUT    /api/v1/subjects/{id}/       update  (admin only)
+    PATCH  /api/v1/subjects/{id}/       partial (admin only)
+    DELETE /api/v1/subjects/{id}/       destroy (admin only)
     """
-    queryset = Subject.objects.all().order_by('name')
+    permission_classes = [HasPermission]
+
+    def get_queryset(self):
+        return (
+            Subject.objects
+            .select_related('teacher', 'teacher__user', 'faculty')
+            .all()
+        )
 
     def get_serializer_class(self):
-        # Use Write Serializer for modifying data (POST, PUT, PATCH)
-        if self.action in ['create', 'update', 'partial_update']:
-            return SubjectWriteSerializer
-        # Use Read Serializer for viewing data (GET)
-        return SubjectReadSerializer
+        if self.action in ('list', 'retrieve'):
+            return SubjectReadSerializer
+        return SubjectWriteSerializer
 
     def get_permissions(self):
-        # Security: Only Staff/Admins can Create, Update, or Delete subjects
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [permissions.IsAdminUser()]
-        
-        # Any authenticated user (Student, Teacher, Admin) can view subjects
-        return [permissions.IsAuthenticated()]
+        if self.action in ('list', 'retrieve'):
+            return [HasPermission()]
+        return [IsAdminRole()]

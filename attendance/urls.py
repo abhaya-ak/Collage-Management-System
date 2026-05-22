@@ -1,8 +1,18 @@
-from django.urls import path
-from .views import MarkAttendanceAPIView, StudentAttendanceReportAPIView
+# attendance/urls.py
+
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    StudentAttendanceViewSet,
+    TeacherAttendanceViewSet,
+    AdminAttendanceViewSet,
+)
+
+router = DefaultRouter()
+router.register(r'my',    StudentAttendanceViewSet, basename='my-attendance')
+router.register(r'mark',  TeacherAttendanceViewSet, basename='mark-attendance')
+router.register(r'admin', AdminAttendanceViewSet,   basename='admin-attendance')
 
 urlpatterns = [
-    # POST endpoint for teachers
-    path('attendance/mark/', MarkAttendanceAPIView.as_view(), name='mark-attendance'),
-    path('attendance/student/<int:id>/', StudentAttendanceReportAPIView.as_view(), name='student-attendance-report'),
+    path('', include(router.urls)),
 ]

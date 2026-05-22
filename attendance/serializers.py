@@ -1,14 +1,9 @@
 # attendance/serializers.py
 from django.utils import timezone
 from rest_framework import serializers
-
 from .models import Attendance
 from students.models import Teacher
-
-
-# ===========================================================================
-# WRITE — teacher marks attendance for one student
-# ===========================================================================
+from .services import AttendanceService
 
 class AttendanceWriteSerializer(serializers.ModelSerializer):
     """
@@ -22,80 +17,30 @@ class AttendanceWriteSerializer(serializers.ModelSerializer):
         fields = ['id', 'student', 'subject', 'date', 'status']
         read_only_fields = ['id']
 
-    # --- Field-level -------------------------------------------------------
-
     def validate_date(self, value):
-        if value > timezone.now().date():
-            raise serializers.ValidationError(
-                "Attendance cannot be marked for a future date."
-            )
+        try:
+            AttendanceService.validate_date_not_future(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
         return value
 
-    # --- Object-level ------------------------------------------------------
-
     def validate(self, attrs):
-        self._validate_no_duplicate(attrs)
-        self._validate_teacher_owns_subject(attrs)
-        return attrs
-
-    def _validate_no_duplicate(self, attrs):
-        """
-        unique_together on the model gives a raw DB error.
-        Re-implement here for a clean 400 with a readable message.
-        """
-        student = attrs.get('student', getattr(self.instance, 'student', None))
-        subject = attrs.get('subject', getattr(self.instance, 'subject', None))
-        date    = attrs.get('date',    getattr(self.instance, 'date',    None))
-
-        qs = Attendance.objects.filter(
-            student=student, subject=subject, date=date
-        )
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise serializers.ValidationError(
-                f"Attendance for this student in '{subject}' "
-                f"on {date} has already been marked. "
-                "Use the update endpoint to correct it."
-            )
-
-    def _validate_teacher_owns_subject(self, attrs):
-        """
-        A teacher can only mark attendance for their own subjects.
-        Prevents Teacher A from marking attendance for Teacher B's class.
-        request.user is accessed via serializer context.
-        """
+        def _get(f):
+            return attrs.get(f, getattr(self.instance, f, None))
         request = self.context.get('request')
-        if not request:
-            return  # skip if called outside HTTP context (e.g. tests, shell)
-
-        subject = attrs.get('subject', getattr(self.instance, 'subject', None))
-        if not subject:
-            return
-
         try:
-            teacher = Teacher.objects.get(user=request.user)
-        except Teacher.DoesNotExist:
-            raise serializers.ValidationError(
-                "Only registered teachers can mark attendance."
+            AttendanceService.validate_no_duplicate(
+                _get('student'), _get('subject'), _get('date'),
+                exclude_pk=self.instance.pk if self.instance else None,
             )
-
-        if subject.teacher_id != teacher.pk:
-            raise serializers.ValidationError({
-                'subject': (
-                    f"You are not the assigned teacher for '{subject.name}'. "
-                    "You can only mark attendance for your own subjects."
-                )
-            })
+            if request:
+                AttendanceService.validate_teacher_owns_subject(request.user, _get('subject'))
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+        return attrs
 
     def to_representation(self, instance):
         return AttendanceReadSerializer(instance, context=self.context).data
-
-
-# ===========================================================================
-# WRITE — teacher marks attendance for entire class at once (bulk)
-# ===========================================================================
 
 class AttendanceBulkEntrySerializer(serializers.Serializer):
     """
@@ -109,11 +54,9 @@ class AttendanceBulkEntrySerializer(serializers.Serializer):
     )
     status  = serializers.ChoiceField(choices=Attendance.Status.choices)
 
-
 class AttendanceBulkWriteSerializer(serializers.Serializer):
     """
     Teacher marks attendance for a full class in one POST.
-
     Payload:
     {
         "subject": 3,
@@ -124,7 +67,6 @@ class AttendanceBulkWriteSerializer(serializers.Serializer):
             ...
         ]
     }
-
     Returns list of created/updated Attendance objects.
     """
     from subjects.models import Subject as _Subject
@@ -136,80 +78,42 @@ class AttendanceBulkWriteSerializer(serializers.Serializer):
     date    = serializers.DateField()
     records = AttendanceBulkEntrySerializer(many=True)
 
-    # --- Field-level -------------------------------------------------------
-
     def validate_date(self, value):
-        if value > timezone.now().date():
-            raise serializers.ValidationError(
-                "Attendance cannot be marked for a future date."
-            )
+        try:
+            AttendanceService.validate_date_not_future(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
         return value
 
     def validate_records(self, records):
-        if not records:
-            raise serializers.ValidationError(
-                "Records list cannot be empty."
-            )
-        # Check for duplicate students in the same batch
-        student_ids = [r['student'].pk for r in records]
-        if len(student_ids) != len(set(student_ids)):
-            raise serializers.ValidationError(
-                "Duplicate students found in the records list. "
-                "Each student must appear exactly once per batch."
-            )
+        try:
+            AttendanceService.validate_bulk_records(records)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
         return records
-
-    # --- Object-level ------------------------------------------------------
 
     def validate(self, attrs):
         request = self.context.get('request')
         subject = attrs.get('subject')
-
         if request and subject:
             try:
-                teacher = Teacher.objects.get(user=request.user)
-            except Teacher.DoesNotExist:
-                raise serializers.ValidationError(
-                    "Only registered teachers can mark attendance."
-                )
-            if subject.teacher_id != teacher.pk:
-                raise serializers.ValidationError({
-                    'subject': (
-                        f"You are not the assigned teacher for '{subject.name}'."
-                    )
-                })
+                AttendanceService.validate_teacher_owns_subject(request.user, subject)
+            except ValueError as e:
+                raise serializers.ValidationError(str(e))
         return attrs
 
     def save(self, **kwargs):
-        """
-        Upsert strategy — update_or_create per record.
-        Safe to re-run if teacher corrects a mistake.
-        Returns list of Attendance instances.
-        """
         request   = self.context.get('request')
-        subject   = self.validated_data['subject']
-        date      = self.validated_data['date']
-        records   = self.validated_data['records']
         marked_by = request.user if request else None
-
-        results = []
-        for row in records:
-            obj, _ = Attendance.objects.update_or_create(
-                student = row['student'],
-                subject = subject,
-                date    = date,
-                defaults={
-                    'status':    row['status'],
-                    'marked_by': marked_by,
-                },
+        try:
+            return AttendanceService.bulk_mark(
+                subject   = self.validated_data['subject'],
+                date      = self.validated_data['date'],
+                records   = self.validated_data['records'],
+                marked_by = marked_by,
             )
-            results.append(obj)
-        return results
-
-
-# ===========================================================================
-# READ — student views their own attendance report
-# ===========================================================================
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
 class AttendanceReadSerializer(serializers.ModelSerializer):
     """
@@ -244,11 +148,6 @@ class AttendanceReadSerializer(serializers.ModelSerializer):
             return None
         u = obj.marked_by
         return f"{u.first_name} {u.last_name}".strip() or u.username
-
-
-# ===========================================================================
-# READ — admin views full attendance with student details
-# ===========================================================================
 
 class AttendanceAdminReadSerializer(serializers.ModelSerializer):
     """

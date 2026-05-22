@@ -164,3 +164,18 @@ A real-world, production-grade College ERP System that can be deployed in any in
 
 
 # change
+ /// --------- Why this scale -------- ///
+
+Because:
+
+Role-based routing
+Service layer isolation
+Stateless JWT auth
+Cached dashboard
+Clean DB relations
+
+You can scale to:
+
+Multiple colleges
+10k+ students
+Mobile PWA

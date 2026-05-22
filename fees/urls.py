@@ -1,8 +1,18 @@
-from django.urls import path
-from .views import PayFeeAPIView, StudentFeeHistoryAPIView
+# fees/urls.py
+
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    FeeStructureViewSet,
+    StudentFeeViewSet,
+    PaymentViewSet,
+)
+
+router = DefaultRouter()
+router.register(r'structures', FeeStructureViewSet, basename='fee-structure')
+router.register(r'bills',      StudentFeeViewSet,   basename='student-fee')
+router.register(r'payments',   PaymentViewSet,      basename='payment')
 
 urlpatterns = [
-    # POST: Record a new payment
-    path('pay/', PayFeeAPIView.as_view(), name='pay-fees'),
-    path('student/<int:id>/', StudentFeeHistoryAPIView.as_view(), name='student-fee-history'),
+    path('', include(router.urls)),
 ]

@@ -1,37 +1,69 @@
-from rest_framework import viewsets, permissions
-from .models import Feedback, Student
-from .serializers import FeedbackWriteSerializer, FeedbackReadSerializer
+# feedback/views.py
 
-class FeedbackViewSet(viewsets.ModelViewSet):
+from rest_framework import viewsets, mixins
+from rest_framework.exceptions import PermissionDenied
+
+from auth_core.permissions import HasPermission, IsAdminRole
+
+from .models import Feedback
+from students.models import Student
+from .serializers import (
+    FeedbackWriteSerializer,
+    FeedbackStudentReadSerializer,
+    FeedbackAdminReadSerializer,
+)
+
+
+class FeedbackViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     """
-    POST /api/v1/feedback/ -> Submit feedback (Students)
-    GET /api/v1/feedback/ -> View all feedback (Admins)
+    POST  /api/v1/feedback/     submit feedback   (student only)
+
+    CreateModelMixin is required so the DRF router wires up POST.
+    Students submit; only admin reads (via AdminFeedbackViewSet).
     """
-    queryset = Feedback.objects.all().order_by('-submitted_at')
-    
-    # Strictly lock down the HTTP methods. No edits or deletions allowed!
-    http_method_names = ['get', 'post']
+    serializer_class   = FeedbackWriteSerializer
+    permission_classes = [HasPermission]
 
-    def get_serializer_class(self):
-        # Dynamically switch the serializer
-        if self.action == 'create':
-            return FeedbackWriteSerializer
-        return FeedbackReadSerializer
+    def create(self, request):
+        from rest_framework.response import Response
+        from rest_framework import status
 
-    def get_permissions(self):
-        # Security: Who is allowed to do what?
-        if self.action == 'create':
-            # Anyone logged in (specifically students) can POST
-            return [permissions.IsAuthenticated()]
-        
-        # Only Admins/Staff can GET the list of all feedback
-        return [permissions.IsAdminUser()]
-
-    def perform_create(self, serializer):
-        # Security: Extract the student from the auth token
         try:
-            student = Student.objects.get(user=self.request.user)
-            serializer.save(student=student)
+            student = Student.objects.get(user=request.user)
         except Student.DoesNotExist:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only registered students can submit feedback.")
+
+        serializer = FeedbackWriteSerializer(
+            data=request.data,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(submitted_by=student)
+
+        return Response(
+            FeedbackStudentReadSerializer(
+                serializer.instance,
+                context={'request': request},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminFeedbackViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET  /api/v1/feedback/admin/            list    (all feedback)
+    GET  /api/v1/feedback/admin/{id}/       detail
+    """
+    serializer_class   = FeedbackAdminReadSerializer
+    permission_classes = [IsAdminRole]
+
+    def get_queryset(self):
+        return (
+            Feedback.objects
+            .select_related(
+                'submitted_by',
+                'submitted_by__user',
+                'target_teacher',
+            )
+            .order_by('-submitted_at')
+        )

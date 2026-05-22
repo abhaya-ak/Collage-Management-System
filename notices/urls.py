@@ -1,13 +1,14 @@
+# notices/urls.py
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import AdminNoticeViewSet
+from .views import NoticeViewSet, AdminNoticeViewSet
 
 router = DefaultRouter()
-
-# This automatically handles GET /notices/, POST /notices/, and GET /notices/{id}/
-router.register(r'notices', AdminNoticeViewSet, basename='notice')
+router.register(r'admin', AdminNoticeViewSet, basename='admin-notice')
+router.register(r'',      NoticeViewSet,      basename='notice')
+# NOTE: admin must be registered BEFORE '' to avoid route shadowing
 
 urlpatterns = [
-    # Include the router
     path('', include(router.urls)),
 ]

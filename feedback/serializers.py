@@ -3,25 +3,8 @@ from rest_framework import serializers
 
 from .models import Feedback
 from students.models import Teacher
+from .services import FeedbackService
 
-
-# ===========================================================================
-# HELPERS
-# ===========================================================================
-
-def _resolve_teacher_name(user):
-    """
-    target_teacher is FK → User directly (not → Teacher).
-    So name comes from user.first_name, not user.user.first_name.
-    """
-    if not user:
-        return None
-    return f"{user.first_name} {user.last_name}".strip() or user.username
-
-
-# ===========================================================================
-# WRITE — student submits feedback
-# ===========================================================================
 
 class FeedbackWriteSerializer(serializers.ModelSerializer):
     """
@@ -36,41 +19,21 @@ class FeedbackWriteSerializer(serializers.ModelSerializer):
         fields = ['id', 'type', 'message', 'target_teacher']
         read_only_fields = ['id']
 
-    # --- Field-level -------------------------------------------------------
-
     def validate_message(self, value):
-        value = value.strip()
-        if len(value) < 10:
-            raise serializers.ValidationError(
-                "Message is too short. Please provide at least 10 characters."
-            )
-        if len(value) > 2000:
-            raise serializers.ValidationError(
-                "Message cannot exceed 2000 characters."
-            )
-        return value
+        try:
+            return FeedbackService.validate_message(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
     def validate_target_teacher(self, user):
-        """
-        target_teacher must be an actual Teacher — not just any User.
-        Prevents students from tagging admin accounts as 'teachers'.
-        """
-        if user is None:
-            return None  # feedback directed at college — perfectly valid
-
-        if not Teacher.objects.filter(user=user).exists():
-            raise serializers.ValidationError(
-                "The selected user is not a registered teacher."
-            )
+        try:
+            FeedbackService.validate_target_teacher(user)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
         return user
 
     def to_representation(self, instance):
         return FeedbackStudentReadSerializer(instance, context=self.context).data
-
-
-# ===========================================================================
-# READ — student views their own submissions
-# ===========================================================================
 
 class FeedbackStudentReadSerializer(serializers.ModelSerializer):
     """
@@ -96,14 +59,8 @@ class FeedbackStudentReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_directed_at(self, obj):
-        if obj.target_teacher:
-            return _resolve_teacher_name(obj.target_teacher)
-        return "College Administration"
+        return FeedbackService.resolve_directed_at(obj)
 
-
-# ===========================================================================
-# READ — teacher views feedback directed at them
-# ===========================================================================
 
 class FeedbackTeacherReadSerializer(serializers.ModelSerializer):
     """
@@ -132,11 +89,6 @@ class FeedbackTeacherReadSerializer(serializers.ModelSerializer):
     def get_student_name(self, obj):
         u = obj.student.user
         return f"{u.first_name} {u.last_name}".strip()
-
-
-# ===========================================================================
-# READ — admin views all feedback
-# ===========================================================================
 
 class FeedbackAdminReadSerializer(serializers.ModelSerializer):
     """
@@ -171,12 +123,7 @@ class FeedbackAdminReadSerializer(serializers.ModelSerializer):
         return f"{u.first_name} {u.last_name}".strip()
 
     def get_teacher_name(self, obj):
-        return _resolve_teacher_name(obj.target_teacher)
+        return FeedbackService.resolve_teacher_name(obj.target_teacher)
 
     def get_directed_at(self, obj):
-        """
-        Single clean label for display in admin table column.
-        """
-        if obj.target_teacher:
-            return _resolve_teacher_name(obj.target_teacher)
-        return "College Administration"
+        return FeedbackService.resolve_directed_at(obj)

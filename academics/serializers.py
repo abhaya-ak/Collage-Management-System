@@ -3,11 +3,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Faculty, Routine, ExamRoutine, Result
+from .services import AcademicsService, ResultService
 
-
-# ===========================================================================
-# FACULTY
-# ===========================================================================
 
 class FacultyReadSerializer(serializers.ModelSerializer):
     """
@@ -19,7 +16,7 @@ class FacultyReadSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Faculty
         fields = [
-            'id', 'name', 'code', 'description',
+            'id', 'name', 'description',
             'subject_count',
             'created_at', 'updated_at',
         ]
@@ -39,38 +36,17 @@ class FacultyWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Faculty
-        fields = ['id', 'name', 'code', 'description']
+        fields = ['id', 'name', 'description']
         read_only_fields = ['id']
 
     def validate_name(self, value):
-        value = value.strip()
-        if len(value) < 2:
-            raise serializers.ValidationError(
-                "Faculty name must be at least 2 characters."
-            )
-        return value
-
-    def validate_code(self, value):
-        value = value.strip().upper()   # BSC_CS, BBA — always uppercase
-        if not value:
-            raise serializers.ValidationError("Code cannot be blank.")
-
-        qs = Faculty.objects.filter(code=value)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                f"A faculty with code '{value}' already exists."
-            )
-        return value
+        try:
+            return AcademicsService.validate_faculty_name(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
     def to_representation(self, instance):
         return FacultyReadSerializer(instance, context=self.context).data
-
-
-# ===========================================================================
-# ROUTINE (class timetable)
-# ===========================================================================
 
 class RoutineReadSerializer(serializers.ModelSerializer):
     """
@@ -90,7 +66,6 @@ class RoutineReadSerializer(serializers.ModelSerializer):
     day          = serializers.CharField(
         source='get_day_of_week_display', read_only=True
     )
-
     class Meta:
         model  = Routine
         fields = [
@@ -112,7 +87,6 @@ class RoutineReadSerializer(serializers.ModelSerializer):
             return None
         return f"{t.user.first_name} {t.user.last_name}".strip()
 
-
 class RoutineWriteSerializer(serializers.ModelSerializer):
     """
     Admin creates or updates a timetable slot.
@@ -124,62 +98,28 @@ class RoutineWriteSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'subject', 'section',
-            'day_of_week',
+            'day_of_week',   # bonus fix: was accidentally commented out
             'start_time', 'end_time',
             'room',
             'is_active',
         ]
         read_only_fields = ['id']
 
-    # --- Object-level ------------------------------------------------------
-
     def validate(self, attrs):
-        self._validate_time_range(attrs)
-        self._validate_room_conflict(attrs)
-        return attrs
-
-    def _validate_time_range(self, attrs):
-        start = attrs.get('start_time', getattr(self.instance, 'start_time', None))
-        end   = attrs.get('end_time',   getattr(self.instance, 'end_time',   None))
-
-        if start and end and end <= start:
-            raise serializers.ValidationError({
-                'end_time': "End time must be after start time."
-            })
-
-    def _validate_room_conflict(self, attrs):
-        """
-        Same room cannot have two classes at the same time on the same day.
-        Mirrors the commented-out unique_together in the model Meta —
-        catches it before the DB and returns a readable message.
-        """
-        room        = attrs.get('room',        getattr(self.instance, 'room',        None))
-        day_of_week = attrs.get('day_of_week', getattr(self.instance, 'day_of_week', None))
-        start_time  = attrs.get('start_time',  getattr(self.instance, 'start_time',  None))
-
-        qs = Routine.objects.filter(
-            room=room,
-            day_of_week=day_of_week,
-            start_time=start_time,
-            is_active=True,
-        )
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            day_label = Routine.Day(day_of_week).label if day_of_week is not None else day_of_week
-            raise serializers.ValidationError(
-                f"Room '{room}' is already booked on {day_label} "
-                f"at {start_time}. Choose a different room or time."
+        def _get(f):
+            return attrs.get(f, getattr(self.instance, f, None))
+        try:
+            AcademicsService.validate_time_range(_get('start_time'), _get('end_time'))
+            AcademicsService.validate_room_not_conflicted(
+                _get('room'), _get('day_of_week'), _get('start_time'),
+                exclude_pk=self.instance.pk if self.instance else None,
             )
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+        return attrs
 
     def to_representation(self, instance):
         return RoutineReadSerializer(instance, context=self.context).data
-
-
-# ===========================================================================
-# EXAM ROUTINE
-# ===========================================================================
 
 class ExamRoutineReadSerializer(serializers.ModelSerializer):
     """
@@ -245,81 +185,38 @@ class ExamRoutineWriteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
-    # --- Field-level -------------------------------------------------------
-
     def validate_exam_date(self, value):
-        # Block scheduling in the past only on CREATE
-        if not self.instance and value < timezone.now().date():
-            raise serializers.ValidationError(
-                "Exam date cannot be in the past."
-            )
+        if not self.instance:
+            try:
+                AcademicsService.validate_exam_date_not_past(value)
+            except ValueError as e:
+                raise serializers.ValidationError(str(e))
         return value
 
     def validate_pass_marks(self, value):
         if value < 1:
-            raise serializers.ValidationError(
-                "Pass marks must be at least 1."
-            )
+            raise serializers.ValidationError("Pass marks must be at least 1.")
         return value
 
-    # --- Object-level ------------------------------------------------------
-
     def validate(self, attrs):
-        self._validate_marks(attrs)
-        self._validate_time_range(attrs)
-        self._validate_unique_sitting(attrs)
-        return attrs
-
-    def _validate_marks(self, attrs):
-        full  = attrs.get('full_marks',  getattr(self.instance, 'full_marks',  None))
-        _pass = attrs.get('pass_marks',  getattr(self.instance, 'pass_marks',  None))
-
-        if full and _pass and _pass >= full:
-            raise serializers.ValidationError({
-                'pass_marks': (
-                    f"Pass marks ({_pass}) must be strictly less "
-                    f"than full marks ({full})."
-                )
-            })
-
-    def _validate_time_range(self, attrs):
-        start = attrs.get('start_time', getattr(self.instance, 'start_time', None))
-        end   = attrs.get('end_time',   getattr(self.instance, 'end_time',   None))
-
-        if start and end and end <= start:
-            raise serializers.ValidationError({
-                'end_time': "End time must be after start time."
-            })
-
-    def _validate_unique_sitting(self, attrs):
-        """
-        Mirrors commented-out unique_together("subject", "exam_type", "exam_date").
-        One subject cannot have two sittings of the same type on the same day.
-        """
-        subject   = attrs.get('subject',   getattr(self.instance, 'subject',   None))
-        exam_type = attrs.get('exam_type', getattr(self.instance, 'exam_type', None))
-        exam_date = attrs.get('exam_date', getattr(self.instance, 'exam_date', None))
-
-        qs = ExamRoutine.objects.filter(
-            subject=subject, exam_type=exam_type, exam_date=exam_date
-        )
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise serializers.ValidationError(
-                f"A '{exam_type}' exam for this subject on {exam_date} "
-                "already exists."
+        def _get(f):
+            return attrs.get(f, getattr(self.instance, f, None))
+        try:
+            AcademicsService.validate_marks(_get('full_marks'), _get('pass_marks'))
+            AcademicsService.validate_time_range(_get('start_time'), _get('end_time'))
+            AcademicsService.validate_unique_exam_sitting(
+                _get('subject'), _get('exam_type'), _get('exam_date'),
+                exclude_pk=self.instance.pk if self.instance else None,
             )
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+        return attrs
 
     def to_representation(self, instance):
         return ExamRoutineReadSerializer(instance, context=self.context).data
 
 
-# ===========================================================================
-# RESULT — student view (published only)
-# ===========================================================================
-
+# Result Serializer - student can see published result here
 class ResultStudentReadSerializer(serializers.ModelSerializer):
     """
     What a student sees for their own results.
@@ -367,138 +264,6 @@ class ResultStudentReadSerializer(serializers.ModelSerializer):
             return False
         return obj.marks_obtained >= obj.exam_routine.pass_marks
 
-
-# ===========================================================================
-# RESULT — admin enter / update marks
-# ===========================================================================
-
-class ResultWriteSerializer(serializers.ModelSerializer):
-    """
-    Admin enters or corrects a student's result.
-
-    Grade is intentionally accepted here — admin can override the
-    service-layer computed grade (e.g. medical exemption scenarios).
-    If left blank, the service layer's compute_grade() fills it post-save.
-
-    is_published is excluded — use ResultPublishSerializer for that action.
-    Keeping publish as a separate write path prevents accidental publishing
-    while editing marks.
-    """
-
-    class Meta:
-        model  = Result
-        fields = [
-            'id',
-            'student',
-            'exam_routine',
-            'marks_obtained',
-            'grade',
-            'is_absent',
-            'remarks',
-        ]
-        read_only_fields = ['id']
-
-    # --- Object-level ------------------------------------------------------
-
-    def validate(self, attrs):
-        self._validate_absent_marks_consistency(attrs)
-        self._validate_marks_within_range(attrs)
-        self._validate_unique_result(attrs)
-        return attrs
-
-    def _validate_absent_marks_consistency(self, attrs):
-        is_absent      = attrs.get('is_absent',      getattr(self.instance, 'is_absent',      False))
-        marks_obtained = attrs.get('marks_obtained', getattr(self.instance, 'marks_obtained', None))
-
-        if is_absent and marks_obtained and marks_obtained != 0:
-            raise serializers.ValidationError({
-                'marks_obtained': (
-                    "Student is marked absent. "
-                    "marks_obtained must be 0 for absent students."
-                )
-            })
-
-    def _validate_marks_within_range(self, attrs):
-        exam_routine   = attrs.get('exam_routine',   getattr(self.instance, 'exam_routine',   None))
-        marks_obtained = attrs.get('marks_obtained', getattr(self.instance, 'marks_obtained', None))
-        is_absent      = attrs.get('is_absent',      getattr(self.instance, 'is_absent',      False))
-
-        if is_absent:
-            return  # already validated above
-
-        if exam_routine and marks_obtained is not None:
-            if marks_obtained < 0:
-                raise serializers.ValidationError({
-                    'marks_obtained': "Marks cannot be negative."
-                })
-            if marks_obtained > exam_routine.full_marks:
-                raise serializers.ValidationError({
-                    'marks_obtained': (
-                        f"Marks obtained ({marks_obtained}) cannot exceed "
-                        f"full marks ({exam_routine.full_marks}) "
-                        f"for this exam."
-                    )
-                })
-
-    def _validate_unique_result(self, attrs):
-        """
-        Mirrors commented-out unique_together("student", "exam_routine").
-        One student → one result per exam sitting.
-        """
-        student      = attrs.get('student',      getattr(self.instance, 'student',      None))
-        exam_routine = attrs.get('exam_routine', getattr(self.instance, 'exam_routine', None))
-
-        qs = Result.objects.filter(student=student, exam_routine=exam_routine)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise serializers.ValidationError(
-                "A result for this student and exam already exists. "
-                "Use the update endpoint to correct it."
-            )
-
-    def to_representation(self, instance):
-        return ResultAdminReadSerializer(instance, context=self.context).data
-
-
-# ===========================================================================
-# RESULT — admin publishes (separate action, separate serializer)
-# ===========================================================================
-
-class ResultPublishSerializer(serializers.ModelSerializer):
-    """
-    Admin flips is_published to True.
-    Deliberately minimal — only one field.
-
-    Why separate from ResultWriteSerializer:
-    Publishing is an irreversible business action with visibility consequences.
-    Keeping it separate means the view can require an extra permission check,
-    and accidental mark edits can never accidentally publish a result.
-    """
-
-    class Meta:
-        model  = Result
-        fields = ['id', 'is_published']
-        read_only_fields = ['id']
-
-    def validate_is_published(self, value):
-        # Once published, a result cannot be un-published via this endpoint.
-        # Retraction is a deliberate admin action that needs its own workflow.
-        if self.instance and self.instance.is_published and not value:
-            raise serializers.ValidationError(
-                "A published result cannot be retracted here. "
-                "Contact a system administrator."
-            )
-        return value
-
-    def to_representation(self, instance):
-        return ResultAdminReadSerializer(instance, context=self.context).data
-
-
-# ===========================================================================
-# RESULT — full admin read
-# ===========================================================================
 
 class ResultAdminReadSerializer(serializers.ModelSerializer):
     """
@@ -552,3 +317,78 @@ class ResultAdminReadSerializer(serializers.ModelSerializer):
         if obj.is_absent:
             return False
         return obj.marks_obtained >= obj.exam_routine.pass_marks
+    
+
+class ResultPublishSerializer(serializers.ModelSerializer):
+    """
+    Admin flips is_published to True.
+    Deliberately minimal — only one field.
+
+    Why separate from ResultWriteSerializer:
+    Publishing is an irreversible business action with visibility consequences.
+    Keeping it separate means the view can require an extra permission check,
+    and accidental mark edits can never accidentally publish a result.
+    """
+
+    class Meta:
+        model  = Result
+        fields = ['id', 'is_published']
+        read_only_fields = ['id']
+
+    def validate_is_published(self, value):
+        try:
+            ResultService.validate_retraction_not_allowed(self.instance, value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+        return value
+
+    def to_representation(self, instance):
+        return ResultAdminReadSerializer(instance, context=self.context).data
+
+class ResultWriteSerializer(serializers.ModelSerializer):
+    """
+    Admin enters or corrects a student's result.
+
+    Grade is intentionally accepted here — admin can override the
+    service-layer computed grade (e.g. medical exemption scenarios).
+    If left blank, the service layer's compute_grade() fills it post-save.
+
+    is_published is excluded — use ResultPublishSerializer for that action.
+    Keeping publish as a separate write path prevents accidental publishing
+    while editing marks.
+    """
+
+    class Meta:
+        model  = Result
+        fields = [
+            'id',
+            'student',
+            'exam_routine',
+            'marks_obtained',
+            'grade',
+            'is_absent',
+            'remarks',
+        ]
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        def _get(f, default=None):
+            return attrs.get(f, getattr(self.instance, f, default))
+        try:
+            ResultService.validate_absent_marks(_get('is_absent', False), _get('marks_obtained'))
+            exam_routine = _get('exam_routine')
+            ResultService.validate_marks_in_range(
+                _get('marks_obtained'),
+                exam_routine.full_marks if exam_routine else None,
+                _get('is_absent', False),
+            )
+            ResultService.validate_unique_result(
+                _get('student'), exam_routine,
+                exclude_pk=self.instance.pk if self.instance else None,
+            )
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+        return attrs
+
+    def to_representation(self, instance):
+        return ResultAdminReadSerializer(instance, context=self.context).data

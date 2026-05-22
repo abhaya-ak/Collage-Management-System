@@ -1,32 +1,27 @@
 # subjects/models.py
 from django.db import models 
 
-# 
 class Subject(models.Model):
     teacher = models.ForeignKey(
-    'students.Teacher',
-    on_delete=models.SET_NULL,  # teacher deleted → subject stays, teacher = null
-    related_name="subjects",    # lowercase — Python convention
-    null=True,                  # required since SET_NULL needs it
-    blank=True,
+        'students.Teacher',
+        on_delete=models.SET_NULL,
+        related_name="subjects",
+        null=True,              
+        blank=True,
     )
-    name = models.CharField(
-    max_length=150,
-    null=True,      # temporary - remove after migration
-    blank=True,     # temporary - remove after migration
-)
+    name = models.CharField(max_length=150)
     code = models.CharField(
-    max_length=20,
-    unique=True,
-    null=True,      # temporary - remove after migration
-    blank=True,     # temporary - remove after migration
-    help_text="Short unique code, e.g. CS201",
+        max_length=20,
+        unique=True,
+        default="ISC",             
+        help_text="Short unique code, e.g. CS201",
     )
     faculty = models.ForeignKey(
-    'academics.Faculty',
-    on_delete=models.CASCADE,
-    null=True,      # temporary - remove after migration
-    blank=True,     # temporary - remove after migration
+        'academics.Faculty',
+        on_delete=models.CASCADE,
+        related_name="subjects",
+        null=True,                  
+        blank=True,                  
     )
     full_marks = models.PositiveSmallIntegerField(
         default=100,
@@ -39,8 +34,8 @@ class Subject(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
-    '''class Meta:
-        ordering = ["course", "year", "semester", "name"]
+    class Meta:
+        ordering = ["faculty", "name"]
 
     def __str__(self):
-        return f"{self.code} — {self.name} ({self.course.code} Y{self.year}S{self.semester}'''
+        return f"{self.code} — {self.name}"

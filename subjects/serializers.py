@@ -1,17 +1,10 @@
 # subjects/serializers.py
 from rest_framework import serializers
 from .models import Subject
-
-
-# ---------------------------------------------------------------------------
-# Read Serializer — GET (list + detail)
-# ---------------------------------------------------------------------------
+from .services import SubjectService
 
 class SubjectReadSerializer(serializers.ModelSerializer):
-    """
-    What the frontend receives.
-    FK fields resolved to human-readable strings — not raw IDs.
-    """
+    #What the frontend receives.
     teacher_name = serializers.SerializerMethodField()
     faculty_name = serializers.CharField(source='faculty.name', read_only=True)
     total         = serializers.SerializerMethodField()
@@ -43,17 +36,9 @@ class SubjectReadSerializer(serializers.ModelSerializer):
         # Exposed so UI can show "40 / 100" without doing math client-side
         return obj.full_marks
 
-
-# ---------------------------------------------------------------------------
-# Write Serializer — POST / PUT / PATCH
-# ---------------------------------------------------------------------------
-
 class SubjectWriteSerializer(serializers.ModelSerializer):
-    """
-    What the frontend sends.
-    Accepts FK IDs. Validates marks logic. Returns minimal confirmation.
-    """
 
+#    What the frontend sends.
     class Meta:
         model  = Subject
         fields = [
@@ -67,53 +52,28 @@ class SubjectWriteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
-    # --- Field-level validation -------------------------------------------
-
     def validate_code(self, value):
-        """
-        Code must be unique across all subjects.
-        On UPDATE, exclude the current instance from the uniqueness check.
-        """
-        qs = Subject.objects.filter(code__iexact=value)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                f"A subject with code '{value}' already exists."
+        try:
+            return SubjectService.validate_code_unique(
+                value, exclude_pk=self.instance.pk if self.instance else None
             )
-        return value.upper()  # normalize: always store as uppercase e.g. CS201
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
     def validate_pass_marks(self, value):
-        if value < 1:
-            raise serializers.ValidationError("Pass marks must be at least 1.")
+        try:
+            SubjectService.validate_pass_marks(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
         return value
 
-    # --- Object-level validation -------------------------------------------
-
     def validate(self, attrs):
-        """
-        Rules that require looking at multiple fields together.
-        Works for both CREATE (no self.instance) and UPDATE (partial or full).
-        """
-        # Resolve final values: on PATCH, fall back to existing instance value
-        full_marks = attrs.get(
-            'full_marks',
-            getattr(self.instance, 'full_marks', None)
-        )
-        pass_marks = attrs.get(
-            'pass_marks',
-            getattr(self.instance, 'pass_marks', None)
-        )
-
-        if full_marks is not None and pass_marks is not None:
-            if pass_marks >= full_marks:
-                raise serializers.ValidationError({
-                    'pass_marks': (
-                        f"Pass marks ({pass_marks}) must be "
-                        f"strictly less than full marks ({full_marks})."
-                    )
-                })
-
+        full_marks = attrs.get('full_marks', getattr(self.instance, 'full_marks', None))
+        pass_marks = attrs.get('pass_marks', getattr(self.instance, 'pass_marks', None))
+        try:
+            SubjectService.validate_marks_range(full_marks, pass_marks)
+        except ValueError as e:
+            raise serializers.ValidationError({'pass_marks': str(e)})
         return attrs
 
     def to_representation(self, instance):

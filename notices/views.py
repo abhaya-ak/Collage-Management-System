@@ -1,42 +1,43 @@
-# Create your views here.
+# notices/views.py
 
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets
+
+from auth_core.permissions import HasPermission, IsAdminRole
+
 from .models import Notice
-from .serializers import NoticeSerializer
+from .serializers import NoticeReadSerializer, NoticeWriteSerializer
+
+
+class NoticeViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET  /api/v1/notices/           list    (active notices — all authenticated)
+    GET  /api/v1/notices/{id}/      detail
+    """
+    serializer_class   = NoticeReadSerializer
+    permission_classes = [HasPermission]
+
+    def get_queryset(self):
+        return Notice.objects.filter(is_active=True)
+
 
 class AdminNoticeViewSet(viewsets.ModelViewSet):
     """
-    GET /api/v1/notices/ -> List all notices
-    POST /api/v1/notices/ -> Create a new notice
-    PUT /api/v1/notices/{id}/ -> Update a notice
-    DELETE /api/v1/notices/{id}/ -> Delete a notice
+    GET    /api/v1/notices/admin/           list    (all, incl. inactive)
+    GET    /api/v1/notices/admin/{id}/      detail
+    POST   /api/v1/notices/admin/           create
+    PUT    /api/v1/notices/admin/{id}/      update
+    PATCH  /api/v1/notices/admin/{id}/      partial update
+    DELETE /api/v1/notices/admin/{id}/      delete
     """
-    serializer_class = NoticeSerializer
-    # Order by newest first
-    queryset = Notice.objects.all().order_by('-date_posted')
-
-    def get_permissions(self):
-        # If the request is POST, PUT, or DELETE -> Must be an Admin
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [permissions.IsAdminUser()]
-        
-        # If the request is GET -> Any logged-in user can view
-        return [permissions.IsAuthenticated()]
+    permission_classes = [IsAdminRole]
 
     def get_queryset(self):
-        # Optional Advanced Logic: Filter what users see based on their role!
-        user = self.request.user
-        
-        # Admins see absolutely everything
-        if user.is_staff:
-            return Notice.objects.all().order_by('-date_posted')
-            
-        # Teachers see 'ALL' and 'TEACHERS' notices
-        if hasattr(user, 'teacher'):
-            return Notice.objects.filter(target_audience__in=['ALL', 'TEACHERS']).order_by('-date_posted')
-            
-        # Students see 'ALL' and 'STUDENTS' notices
-        if hasattr(user, 'student'):
-            return Notice.objects.filter(target_audience__in=['ALL', 'STUDENTS']).order_by('-date_posted')
-            
-        return Notice.objects.none() # Fallback for safety
+        return Notice.objects.all()
+
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return NoticeReadSerializer
+        return NoticeWriteSerializer
+
+    def perform_create(self, serializer):
+        serializer.save()

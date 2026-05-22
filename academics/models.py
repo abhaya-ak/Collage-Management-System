@@ -7,13 +7,16 @@ class Faculty(models.Model):
         help_text="Science",
     )
     description = models.TextField(blank=True)
-
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
 
     class Meta:
         ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
 
 ''' @property
     def total_semesters(self) -> int:
@@ -55,11 +58,10 @@ class Routine(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
-
-    '''class Meta:
-        ordering = ["day_of_week", "start_time"]
+    class Meta:
+        ordering        = ["day_of_week", "start_time"]
         unique_together = ("room", "day_of_week", "start_time")
-        verbose_name = "Class Routine"
+        verbose_name        = "Class Routine"
         verbose_name_plural = "Class Routines"
 
     def __str__(self):
@@ -68,8 +70,8 @@ class Routine(models.Model):
             f"{self.start_time:%H:%M}-{self.end_time:%H:%M} | "
             f"{self.subject.code} | Room {self.room}"
         )
-    '''
-    
+
+
 class ExamRoutine(models.Model):
     class ExamType(models.TextChoices):
         INTERNAL  = "internal",  "Internal Assessment"
@@ -79,7 +81,7 @@ class ExamRoutine(models.Model):
         VIVA      = "viva",      "Viva / Oral"
 
 
-    subject = models.ForeignKey('subjects.Subject', on_delete=models.CASCADE, related_name= "Exam_Routine")
+    subject = models.ForeignKey('subjects.Subject', on_delete=models.CASCADE, related_name="exam_routines")
     exam_type = models.CharField(
         max_length=10,
         choices=ExamType.choices,
@@ -105,10 +107,10 @@ class ExamRoutine(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
-'''    class Meta:
-        ordering = ["exam_date", "start_time"]
+    class Meta:
+        ordering        = ["exam_date", "start_time"]
         unique_together = ("subject", "exam_type", "exam_date")
-        verbose_name = "Exam Routine"
+        verbose_name        = "Exam Routine"
         verbose_name_plural = "Exam Routines"
 
     def __str__(self):
@@ -116,7 +118,8 @@ class ExamRoutine(models.Model):
             f"{self.subject.code} | "
             f"{self.get_exam_type_display()} | "
             f"{self.exam_date}"
-        ) '''
+        )
+
 
 class Result(models.Model):
 
@@ -171,9 +174,9 @@ class Result(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
-'''    class Meta:
+    class Meta:
         unique_together = ("student", "exam_routine")
-        ordering = ["-exam_routine__exam_date"]
+        ordering        = ["-exam_routine__exam_date"]
 
     def __str__(self):
         return (
@@ -182,4 +185,3 @@ class Result(models.Model):
             f"{self.marks_obtained}/{self.exam_routine.full_marks} | "
             f"{self.grade or 'Ungraded'}"
         )
-        '''
