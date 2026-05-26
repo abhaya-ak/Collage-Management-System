@@ -4,7 +4,6 @@ from .models import Subject
 from .services import SubjectService
 
 class SubjectReadSerializer(serializers.ModelSerializer):
-    #What the frontend receives.
     teacher_name = serializers.SerializerMethodField()
     faculty_name = serializers.CharField(source='faculty.name', read_only=True)
     total         = serializers.SerializerMethodField()

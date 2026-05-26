@@ -41,7 +41,10 @@ class FacultyWriteSerializer(serializers.ModelSerializer):
 
     def validate_name(self, value):
         try:
-            return AcademicsService.validate_faculty_name(value)
+            return AcademicsService.validate_faculty_name(
+                value,
+                exclude_pk=self.instance.pk if self.instance else None,
+            )
         except ValueError as e:
             raise serializers.ValidationError(str(e))
 

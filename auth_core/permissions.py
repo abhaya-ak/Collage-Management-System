@@ -2,6 +2,7 @@
 from rest_framework.permissions import BasePermission
 
 from auth_core.services.rbac_service import RBACService
+from users.constants import RoleNames
 
 
 class HasPermission(BasePermission):
@@ -39,16 +40,11 @@ class HasPermission(BasePermission):
 
 
 class IsAdminRole(BasePermission):
-    """
-    Replaces IsAdminUser — checks RBAC 'role:admin' instead of is_staff flag.
-    Use this for actions that only admin-role users should perform.
-
-    Superusers always pass.
-    """
+    """Passes only if the authenticated user holds the 'admin' role."""
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
         if getattr(request.user, 'is_superuser', False):
             return True
-        return 'role:admin' in RBACService.load_permissions(request.user)
+        return f'role:{RoleNames.ADMIN}' in RBACService.load_permissions(request.user)

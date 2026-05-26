@@ -7,6 +7,8 @@ from rest_framework.response import Response
 from auth_core.permissions import HasPermission, IsAdminRole
 from auth_core.services.rbac_service import RBACService
 from .services import ResultService
+from users.constants import PermissionCodes
+
 
 from .models import Faculty, Routine, ExamRoutine, Result
 from .serializers import (
@@ -38,6 +40,7 @@ class FacultyViewSet(viewsets.ModelViewSet):
     """
     queryset           = Faculty.objects.all()
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.ACADEMICS_VIEW_TIMETABLE
 
     def get_serializer_class(self):
         if self.action in _READ_ACTIONS:
@@ -64,6 +67,7 @@ class RoutineViewSet(viewsets.ModelViewSet):
     destroy  DELETE /api/v1/academics/routines/{id}/      (admin)
     """
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.ACADEMICS_VIEW_TIMETABLE
 
     def get_queryset(self):
         return (
@@ -102,6 +106,7 @@ class ExamRoutineViewSet(viewsets.ModelViewSet):
     destroy  DELETE /api/v1/academics/exam-routines/{id}/     (admin)
     """
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.ACADEMICS_VIEW_TIMETABLE
 
     def get_queryset(self):
         return (
@@ -136,7 +141,8 @@ class ResultViewSet(viewsets.ModelViewSet):
     publish  POST   /api/v1/academics/results/{id}/publish/  (admin)
     """
     permission_classes = [HasPermission]
-
+    required_permission = PermissionCodes.ACADEMICS_VIEW_RESULT
+    
     def get_queryset(self):
         user = self.request.user
         # Admin (role:admin) sees everything; students see own published results

@@ -7,7 +7,6 @@ load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
@@ -17,9 +16,14 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-local-dev-fallback-do-not-
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+#DEBUG = os.getenv('DEBUG', 'False') == 'True'
+
 
 ALLOWED_HOSTS = []
-
+'''ALLOWED_HOSTS = [
+    h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    if h.strip()
+]'''
 
 # Application definition
 
@@ -44,6 +48,7 @@ INSTALLED_APPS = [
     'notices',
     'feedback',
     'subjects',
+    'dashboard',
 ]
 
 
@@ -105,6 +110,21 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
+# ── Cache (session validation) ────────────────────────────────────────────────
+# Dev:  LocMemCache — zero config, in-process only (no sharing across workers)
+# Prod: set CACHE_BACKEND=django.core.cache.backends.redis.RedisCache
+#       and  CACHE_LOCATION=redis://127.0.0.1:6379/1
+# With Redis every gunicorn worker shares the same revocation state.
+CACHES = {
+    'default': {
+        'BACKEND': os.getenv(
+            'CACHE_BACKEND',
+            'django.core.cache.backends.locmem.LocMemCache',
+        ),
+        'LOCATION': os.getenv('CACHE_LOCATION', 'auth-session-cache'),
+    }
+}
+
 # ── Simple JWT configuration ──────────────────────────────────────────────────
 SIMPLE_JWT = {
     # Access token: short-lived (60 min). Stolen access token expires quickly.
@@ -115,7 +135,7 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS':  False,
     'BLACKLIST_AFTER_ROTATION': False,
     'ALGORITHM': 'HS256',
-    'SIGNING_KEY': os.getenv('SECRET_KEY'),
+    'SIGNING_KEY': SECRET_KEY,  # Use resolved var — os.getenv() here could return None
     'AUTH_HEADER_TYPES': ('Bearer',),
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
@@ -161,6 +181,10 @@ STATIC_URL = 'static/'
 
 # ── CORS (dev: allow all; lock down in prod settings) ────────────────────────
 CORS_ALLOW_ALL_ORIGINS = True
+'''CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+    if o.strip()
+] '''
 
 # ── Default primary key field ────────────────────────────────────────────────
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -1,14 +1,10 @@
 # auth_core/services/audit_service.py
+import logging
+
 from auth_core.models import AuditLog
+from auth_core.utils import get_client_ip
 
-
-def _get_client_ip(request) -> str | None:
-    if not request:
-        return None
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        return x_forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR')
+logger = logging.getLogger('auth_core.audit')
 
 
 class AuditService:
@@ -17,7 +13,7 @@ class AuditService:
 
     CRITICAL DESIGN RULE: this class NEVER raises exceptions.
     An audit failure must NEVER crash an auth request.
-    Every method wraps its body in a bare except.
+    All exceptions are caught, logged to the Python logger, then suppressed.
     """
 
     @staticmethod
@@ -31,10 +27,16 @@ class AuditService:
             AuditLog.objects.create(
                 user       = user,
                 event      = event,
-                ip_address = _get_client_ip(request),
+                ip_address = get_client_ip(request),
                 user_agent = (request.META.get('HTTP_USER_AGENT', '')[:500] if request else ''),
                 metadata   = metadata or {},
             )
         except Exception:
-            # Intentionally swallowed — audit failure is non-fatal
-            pass
+            # Audit failure is non-fatal — auth must not crash because logging failed.
+            # Log to the Python logger so the failure is visible in server logs
+            # without surfacing it to the client.
+            logger.exception(
+                'AuditService.log() failed silently — event=%s user_id=%s',
+                event,
+                getattr(user, 'pk', None),
+            )

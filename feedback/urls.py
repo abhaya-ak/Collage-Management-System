@@ -2,11 +2,13 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import FeedbackViewSet, AdminFeedbackViewSet
+
+from .views import FeedbackViewSet, StudentFeedbackViewSet, AdminFeedbackViewSet
 
 router = DefaultRouter()
+# admin registered before 'my' to prevent any shadowing
 router.register(r'admin', AdminFeedbackViewSet, basename='admin-feedback')
-# NOTE: admin registered before '' to avoid route shadowing
+router.register(r'my',    StudentFeedbackViewSet, basename='my-feedback')
 
 urlpatterns = [
     path('', include(router.urls)),

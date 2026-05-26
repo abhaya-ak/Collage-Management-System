@@ -20,6 +20,7 @@ from .serializers import (
     PaymentAdminDetailSerializer,
 )
 
+from users.constants import PermissionCodes
 
 # ─────────────────────────────────────────────────────────────
 # 1. Fee Structure
@@ -36,6 +37,7 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
     """
     queryset           = FeeStructure.objects.all()
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.FEES_VIEW_ALL
 
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
@@ -60,6 +62,7 @@ class StudentFeeViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class   = StudentFeeReadSerializer
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.FEES_VIEW_OWN
 
     def get_queryset(self):
         from auth_core.services.rbac_service import RBACService
@@ -106,6 +109,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     POST   /api/v1/fees/payments/{id}/verify/   verify payment   (admin only)
     """
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.FEES_SUBMIT_PAYMENT
 
     def get_serializer_class(self):
         if self.action == 'verify':

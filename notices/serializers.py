@@ -1,26 +1,31 @@
-# notices/serializers.py
 from rest_framework import serializers
+
 from .models import Notice
 from .services import NoticeService
 
-
-# ---------------------------------------------------------------------------
 # Read — what any authenticated user sees
-# ---------------------------------------------------------------------------
 
 class NoticeReadSerializer(serializers.ModelSerializer):
     """
-    Clean card for the frontend notice board.
-    Human labels instead of raw choice codes.
+    Clean notice card for the frontend board.
+
+    is_read: annotated by the view's get_queryset() using an Exists() subquery.
+             Defaults to False when the annotation is absent (e.g., admin writes).
+             No extra query per row — zero N+1.
+
+    priority_display: human label for the priority choice.
     """
     type_display            = serializers.CharField(
-                                source='get_type_display',
-                                read_only=True,
-                              )
+        source='get_type_display',            read_only=True,
+    )
     target_audience_display = serializers.CharField(
-                                source='get_target_audience_display',
-                                read_only=True,
-                              )
+        source='get_target_audience_display', read_only=True,
+    )
+    priority_display        = serializers.CharField(
+        source='get_priority_display',        read_only=True,
+    )
+    # Populated by Exists() annotation in NoticeViewSet.get_queryset()
+    is_read = serializers.BooleanField(read_only=True, default=False)
 
     class Meta:
         model  = Notice
@@ -29,21 +34,20 @@ class NoticeReadSerializer(serializers.ModelSerializer):
             'title',
             'type',            'type_display',
             'target_audience', 'target_audience_display',
+            'priority',        'priority_display',
             'content',
             'date_posted',
             'is_active',
+            'is_read',
         ]
         read_only_fields = fields
 
-
-# ---------------------------------------------------------------------------
 # Write — admin creates or updates a notice
-# ---------------------------------------------------------------------------
 
 class NoticeWriteSerializer(serializers.ModelSerializer):
     """
-    Admin posts this. date_posted is auto-set by the DB — never accepted from input.
-    Returns the full read representation on success.
+    Admin posts this. date_posted is auto-set — never accepted from input.
+    Returns full NoticeReadSerializer representation on success.
     """
 
     class Meta:
@@ -53,12 +57,11 @@ class NoticeWriteSerializer(serializers.ModelSerializer):
             'title',
             'type',
             'target_audience',
+            'priority',
             'content',
             'is_active',
         ]
         read_only_fields = ['id']
-
-    # --- Field-level validation -------------------------------------------
 
     def validate_title(self, value):
         try:

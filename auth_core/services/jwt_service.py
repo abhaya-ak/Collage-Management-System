@@ -1,9 +1,6 @@
 # auth_core/services/jwt_service.py
-import base64
-import json
-
 from django.utils import timezone
-from rest_framework_simplejwt.tokens import RefreshToken, AccessToken, UntypedToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 
 
@@ -19,10 +16,10 @@ class JWTService:
         """
         Returns:
             {
-                'access':      str,   # short-lived access token
-                'refresh':     str,   # long-lived refresh token
-                'jti':         str,   # jti of the REFRESH token (used for sessions)
-                'access_jti':  str,   # jti of the access token
+                'access':      str,   # short-lived access token string
+                'refresh':     str,   # long-lived refresh token string
+                'jti':         str,   # jti of the REFRESH token (session anchor)
+                'access_jti':  str,   # jti of the ACCESS token (middleware check)
             }
         """
         refresh = RefreshToken.for_user(user)
@@ -35,29 +32,11 @@ class JWTService:
         }
 
     @staticmethod
-    def extract_jti_unsafe(token: str) -> str | None:
-        """
-        Decode JWT payload WITHOUT signature verification.
-        Used only for the fast blacklist check in AuthMiddleware —
-        DRF still performs full cryptographic verification for every request.
-        """
-        try:
-            parts = token.split('.')
-            if len(parts) != 3:
-                return None
-            # Pad base64url to a multiple of 4
-            payload = parts[1]
-            payload += '=' * (4 - len(payload) % 4)
-            decoded = json.loads(base64.urlsafe_b64decode(payload))
-            return str(decoded.get('jti', '')) or None
-        except Exception:
-            return None
-
-    @staticmethod
     def blacklist_refresh_token(refresh_token_str: str) -> str | None:
         """
         Writes the refresh token's jti to TokenBlacklist.
-        Returns the jti on success, None if the token is invalid.
+        Returns the jti on success, None if the token is invalid/expired.
+        Safe to call multiple times for the same token (get_or_create is idempotent).
         """
         from auth_core.models import TokenBlacklist
         try:

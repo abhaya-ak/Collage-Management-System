@@ -1,8 +1,6 @@
 # auth_core/models.py
-import datetime
 from django.db import models
 from django.conf import settings
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. UserProfile  — extends the thin User(AbstractUser):pass with real data
@@ -40,6 +38,7 @@ class UserSession(models.Model):
     last_seen_at = models.DateTimeField(auto_now=True)
     closed_at    = models.DateTimeField(null=True, blank=True)
     is_active    = models.BooleanField(default=True, db_index=True)
+    access_jti   = models.CharField(max_length=255, db_index=True, blank=True, default='')  # ← ADD THIS
 
     class Meta:
         ordering = ['-created_at']

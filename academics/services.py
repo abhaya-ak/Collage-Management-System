@@ -80,6 +80,63 @@ def get_subjects_by_teacher(*, teacher_id: int):
 class AcademicsService:
 
     @staticmethod
+    def validate_faculty_name(name: str, exclude_pk: int | None = None) -> str:
+        """
+        Validates and normalises a Faculty name.
+
+        Called from FacultyWriteSerializer.validate_name() on every
+        faculty create and update.
+
+        Steps (in order):
+            1. Strip leading/trailing whitespace.
+            2. Reject empty string after stripping.
+            3. Enforce minimum length of 2 characters.
+            4. Enforce maximum length of 100 characters (mirrors model field).
+            5. Case-insensitive duplicate check — excludes own row on UPDATE.
+
+        Args:
+            name:        Raw name value from the serializer field.
+            exclude_pk:  PK of the Faculty being updated; None on CREATE.
+                         Prevents a PATCH from rejecting its own current name.
+
+        Returns:
+            Stripped name string — DRF stores this in validated_data.
+
+        Raises:
+            ValueError: Plain string; FacultyWriteSerializer converts to
+                        serializers.ValidationError.  Do NOT raise
+                        ValidationError here — services must stay framework-agnostic.
+        """
+        from .models import Faculty   # lazy import — avoids circular dependency
+
+        # ── Step 1: normalise ─────────────────────────────────────────────────
+        name = name.strip()
+
+        # ── Step 2: empty guard ───────────────────────────────────────────────
+        if not name:
+            raise ValueError("Faculty name cannot be blank.")
+
+        # ── Step 3: minimum length ────────────────────────────────────────────
+        if len(name) < 2:
+            raise ValueError("Faculty name must be at least 2 characters.")
+
+        # ── Step 4: maximum length (belt-and-suspenders; mirrors max_length=100)
+        if len(name) > 100:
+            raise ValueError("Faculty name cannot exceed 100 characters.")
+
+        # ── Step 5: case-insensitive uniqueness check ─────────────────────────
+        qs = Faculty.objects.filter(name__iexact=name)
+        if exclude_pk is not None:
+            qs = qs.exclude(pk=exclude_pk)
+        existing = qs.first()
+        if existing:
+            raise ValueError(
+                f"A faculty named '{existing.name}' already exists."
+            )
+
+        return name
+
+    @staticmethod
     def validate_time_range(start_time, end_time) -> None:
         if start_time and end_time and end_time <= start_time:
             raise ValueError("End time must be after start time.")

@@ -1,11 +1,3 @@
-# fees/serializers.py
-"""
-Thin serializers — input validation + output representation only.
-All business logic lives in fees/services.py.
-"""
-import datetime
-from decimal import Decimal
-
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -21,10 +13,7 @@ class _DecimalField(serializers.DecimalField):
         kwargs.setdefault('coerce_to_string', False)
         super().__init__(**kwargs)
 
-
-# ===========================================================================
 # FEE STRUCTURE
-# ===========================================================================
 
 class FeeStructureReadSerializer(serializers.ModelSerializer):
     faculty_name = serializers.CharField(source='faculty.name', read_only=True)
@@ -79,8 +68,6 @@ class FeeStructureWriteSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(str(e))
         return value
 
-    # ── Object-level: cross-field rules via service ──────────────────────────
-
     def validate(self, attrs):
         # Resolve partial-update values
         def _get(field):
@@ -105,9 +92,7 @@ class FeeStructureWriteSerializer(serializers.ModelSerializer):
         return FeeStructureReadSerializer(instance, context=self.context).data
 
 
-# ===========================================================================
 # STUDENT FEE (BILL)
-# ===========================================================================
 
 class StudentFeeReadSerializer(serializers.ModelSerializer):
     fee_structure  = FeeStructureReadSerializer(read_only=True)
@@ -185,9 +170,7 @@ class StudentFeeGenerateSerializer(serializers.Serializer):
         return StudentFeeReadSerializer(instance, context=self.context).data
 
 
-# ===========================================================================
 # PAYMENT
-# ===========================================================================
 
 class PaymentSummarySerializer(serializers.ModelSerializer):
     """Compact read-only view embedded inside the bill."""

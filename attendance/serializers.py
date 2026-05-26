@@ -190,3 +190,56 @@ class AttendanceAdminReadSerializer(serializers.ModelSerializer):
             return None
         u = obj.marked_by
         return f"{u.first_name} {u.last_name}".strip() or u.username
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Attendance Summary — aggregate percentage per subject
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AttendanceSubjectSummarySerializer(serializers.Serializer):
+    """
+    One row in the per-subject breakdown.
+
+    Fields mirror AttendanceService.compute_subject_summary() output exactly.
+    Policy: LATE is counted as PRESENT (Option A, confirmed).
+    """
+    subject_id        = serializers.IntegerField(read_only=True)
+    subject_code      = serializers.CharField(read_only=True)
+    subject_name      = serializers.CharField(read_only=True)
+    total             = serializers.IntegerField(
+        read_only=True,
+        help_text="Total classes held (all statuses)",
+    )
+    present           = serializers.IntegerField(
+        read_only=True,
+        help_text="Records with status=PRESENT",
+    )
+    late              = serializers.IntegerField(
+        read_only=True,
+        help_text="Records with status=LATE (counted as present in percentage)",
+    )
+    absent            = serializers.IntegerField(read_only=True)
+    leave             = serializers.IntegerField(read_only=True)
+    effective_present = serializers.IntegerField(
+        read_only=True,
+        help_text="present + late — the numerator for the percentage",
+    )
+    percentage        = serializers.DecimalField(
+        max_digits=5, decimal_places=2, read_only=True,
+        help_text="(effective_present / total) × 100, rounded to 2 dp",
+    )
+
+
+class AttendanceSummaryResponseSerializer(serializers.Serializer):
+    """
+    Top-level summary response.
+
+    Contains:
+      - overall_percentage  — single scalar across all subjects
+      - subjects            — per-subject breakdown list
+    """
+    overall_percentage = serializers.DecimalField(
+        max_digits=5, decimal_places=2, read_only=True,
+        help_text="Aggregate % across all subjects (LATE=PRESENT policy)",
+    )
+    subjects = AttendanceSubjectSummarySerializer(many=True, read_only=True)

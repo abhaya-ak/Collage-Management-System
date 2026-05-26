@@ -14,6 +14,7 @@ from auth_core.serializers import (
 from auth_core.services.auth_service import AuthService
 from auth_core.services.audit_service import AuditService
 from auth_core.services.rbac_service import RBACService
+from auth_core.services.session_service import SessionService
 
 def _user_response(user) -> dict:
     """Compact user object returned with every token response."""
@@ -31,13 +32,13 @@ def _user_response(user) -> dict:
 # POST /api/v1/auth/register/
 # ─────────────────────────────────────────────────────────────────────────────
 class RegisterView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny] # it allow all type of users 
 
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        serializer = RegisterSerializer(data=request.data) # register serializers call 
+        serializer.is_valid(raise_exception=True) # is valied x ki xaina check hun x
 
-        result = AuthService.register(serializer.validated_data, request=request)
+        result = AuthService.register(serializer.validated_data, request=request) # authservieces.reister()
 
         return Response(
             {
@@ -103,6 +104,7 @@ class LogoutView(APIView):
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/v1/auth/refresh/
 # ─────────────────────────────────────────────────────────────────────────────
+
 class RefreshView(APIView):
     """
     Secure token rotation — blacklists old refresh token, issues new pair.
@@ -125,10 +127,6 @@ class RefreshView(APIView):
             status=status.HTTP_200_OK,
         )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# GET / PATCH /api/v1/auth/me/
-# ─────────────────────────────────────────────────────────────────────────────
 class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes     = [JSONParser, MultiPartParser]
@@ -171,10 +169,18 @@ class ChangePasswordView(APIView):
         user.set_password(serializer.validated_data['new_password'])
         user.save()
 
+        # Immediately revoke ALL active sessions for this user.
+        # Without this, any stolen refresh token (7-day lifetime) remains valid
+        # even after the password is changed — the attacker keeps access.
+        # This includes the current session, so the client must re-login.
+        SessionService.close_all_for_user(user)
+
         AuditService.log(
             event   = AuditLog.Event.PASSWORD_CHANGE,
             user    = user,
             request = request,
         )
 
-        return Response({'detail': 'Password changed successfully.'})
+        return Response({
+            'detail': 'Password changed successfully. Please log in again with your new password.',
+        })

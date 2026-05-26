@@ -7,6 +7,11 @@ class Attendance(models.Model):
         PRESENT = 'present', 'Present'
         ABSENT  = 'absent',  'Absent'
         LEAVE   = 'leave',   'Leave'
+        # LATE: student arrived after the class started but was physically present.
+        # PERCENTAGE POLICY (Option A): LATE counts as PRESENT for attendance %.
+        # Formula: (PRESENT + LATE) / total_classes * 100
+        # If this policy changes, update AttendanceService.compute_percentage() in F-AT-01.
+        LATE    = 'late',    'Late'
 
     student   = models.ForeignKey(
         'students.Student',

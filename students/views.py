@@ -11,6 +11,7 @@ from academics.models import Result, Routine
 from academics.serializers import ResultStudentReadSerializer, RoutineReadSerializer
 from feedback.models import Feedback
 from feedback.serializers import FeedbackTeacherReadSerializer
+from users.constants import PermissionCodes
 
 from .serializers import (
     StudentProfileSerializer,
@@ -32,8 +33,17 @@ class StudentProfileViewSet(viewsets.ModelViewSet):
     PATCH  /api/v1/students/profiles/{id}/      partial (admin only)
     DELETE /api/v1/students/profiles/{id}/      destroy (admin only)
     """
-    queryset           = Student.objects.select_related('user').all()
+    def get_queryset(self):
+        user = self.request.user
+        # Admin, teacher, accounts, receptionist — anyone with STUDENTS_VIEW_ALL
+        if RBACService.has_permission(user, PermissionCodes.STUDENTS_VIEW_ALL) \
+           or user.is_superuser:
+            return Student.objects.select_related('user').all()
+        # Students see only their own profile
+        return Student.objects.select_related('user').filter(user=user)
+    
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
 
     def get_serializer_class(self):
         if self.action in _READ_ACTIONS:
@@ -54,6 +64,7 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
     queryset           = Teacher.objects.select_related('user').all()
     serializer_class   = TeacherSerializer
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
 
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
@@ -66,6 +77,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     DELETE /api/v1/students/leaves/{id}/    cancel
     """
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -94,6 +106,7 @@ class StudentResultViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class   = ResultStudentReadSerializer
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
 
     def get_queryset(self):
         return (
@@ -110,6 +123,7 @@ class TeacherRoutineViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class   = RoutineReadSerializer
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
 
     def get_queryset(self):
         return (
@@ -131,6 +145,7 @@ class TeacherFeedbackViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class   = FeedbackTeacherReadSerializer
     permission_classes = [HasPermission]
+    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
 
     def get_queryset(self):
         return (

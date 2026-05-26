@@ -2,9 +2,13 @@
 """
 Attendance domain service layer.
 
-AttendanceService — single mark, bulk upsert, teacher ownership checks
+AttendanceService — single mark, bulk upsert, teacher ownership checks,
+                    attendance percentage & per-subject summary
 """
+from decimal import Decimal
+
 from django.db import transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from .models import Attendance
@@ -82,3 +86,106 @@ class AttendanceService:
             )
             results.append(obj)
         return results
+
+    # ── Aggregate helpers ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def compute_subject_summary(student, subject_id: int | None = None) -> list[dict]:
+        """
+        Returns a per-subject attendance breakdown for a student.
+
+        Policy (Option A — confirmed):
+            PRESENT + LATE both count as "present" for the percentage.
+            Formula: (present_count + late_count) / total_classes × 100
+
+        Args:
+            student:    students.Student instance
+            subject_id: optional int — if supplied, filters to one subject
+
+        Returns:
+            List of dicts, one per subject:
+            {
+                'subject_id':   int,
+                'subject_code': str,
+                'subject_name': str,
+                'total':        int,
+                'present':      int,   # PRESENT records only
+                'late':         int,   # LATE records only
+                'absent':       int,
+                'leave':        int,
+                'effective_present': int,  # present + late
+                'percentage':   Decimal,   # 0.00 – 100.00, 2 dp
+            }
+
+        Uses a single GROUP BY query — no N+1.
+        Zero-division guarded: returns Decimal('0.00') when total == 0.
+        """
+        qs = (
+            Attendance.objects
+            .filter(student=student)
+            .select_related('subject')
+        )
+        if subject_id is not None:
+            qs = qs.filter(subject_id=subject_id)
+
+        # Single grouped aggregate — one query regardless of subject count
+        rows = (
+            qs
+            .values('subject__id', 'subject__code', 'subject__name')
+            .annotate(
+                total   = Count('id'),
+                present = Count('id', filter=Q(status=Attendance.Status.PRESENT)),
+                late    = Count('id', filter=Q(status=Attendance.Status.LATE)),
+                absent  = Count('id', filter=Q(status=Attendance.Status.ABSENT)),
+                leave   = Count('id', filter=Q(status=Attendance.Status.LEAVE)),
+            )
+            .order_by('subject__code')
+        )
+
+        results = []
+        for row in rows:
+            effective_present = row['present'] + row['late']
+            total             = row['total']
+            # Guard zero-division — subject with 0 total cannot appear (COUNT > 0
+            # by definition), but explicit guard kept for safety.
+            percentage = (
+                round(Decimal(effective_present) / Decimal(total) * 100, 2)
+                if total > 0
+                else Decimal('0.00')
+            )
+            results.append({
+                'subject_id':        row['subject__id'],
+                'subject_code':      row['subject__code'],
+                'subject_name':      row['subject__name'],
+                'total':             total,
+                'present':           row['present'],
+                'late':              row['late'],
+                'absent':            row['absent'],
+                'leave':             row['leave'],
+                'effective_present': effective_present,
+                'percentage':        percentage,
+            })
+        return results
+
+    @staticmethod
+    def compute_percentage(student, subject=None) -> Decimal:
+        """
+        Scalar helper — overall attendance % across all subjects (or one subject).
+        Useful for a single-number dashboard badge.
+
+        Policy: LATE counts as PRESENT (Option A).
+        Zero-division returns Decimal('0.00').
+        """
+        qs = Attendance.objects.filter(student=student)
+        if subject:
+            qs = qs.filter(subject=subject)
+        agg = qs.aggregate(
+            total   = Count('id'),
+            present = Count('id', filter=Q(
+                status__in=[Attendance.Status.PRESENT, Attendance.Status.LATE]
+            )),
+        )
+        total = agg['total'] or 0
+        if total == 0:
+            return Decimal('0.00')
+        return round(Decimal(agg['present']) / Decimal(total) * 100, 2)

@@ -8,7 +8,6 @@ from auth_core.services.rbac_service import RBACService
 
 User = get_user_model()
 
-
 class RegisterSerializer(serializers.Serializer):
     username   = serializers.CharField(max_length=150)
     email      = serializers.EmailField()
