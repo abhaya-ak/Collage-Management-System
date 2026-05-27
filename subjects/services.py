@@ -1,20 +1,8 @@
-# subjects/services.py
-"""
-Subjects domain service layer.
-
-SubjectService — code uniqueness, marks validation
-"""
 from .models import Subject
 
-
 class SubjectService:
-
     @staticmethod
     def validate_code_unique(code: str, exclude_pk=None) -> str:
-        """
-        Normalizes code to uppercase and raises ValueError if already taken.
-        Returns the normalized code.
-        """
         code = code.strip().upper()
         qs = Subject.objects.filter(code__iexact=code)
         if exclude_pk:
