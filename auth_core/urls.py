@@ -8,6 +8,8 @@ from auth_core.views import (
     RefreshView,
     MeView,
     ChangePasswordView,
+    ForgotPasswordView,
+    ResetPasswordView,
 )
 
 urlpatterns = [
@@ -29,4 +31,10 @@ urlpatterns = [
 
     # POST /api/v1/auth/change-password/ — old + new password
     path('change-password/', ChangePasswordView.as_view(), name='auth_change_password'),
+
+    # POST /api/v1/auth/forgot-password/ — request reset email (unauthenticated)
+    path('forgot-password/', ForgotPasswordView.as_view(), name='auth_forgot_password'),
+
+    # POST /api/v1/auth/reset-password/  — consume token + set new password (unauthenticated)
+    path('reset-password/',  ResetPasswordView.as_view(),  name='auth_reset_password'),
 ]

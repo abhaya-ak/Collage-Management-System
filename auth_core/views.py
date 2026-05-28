@@ -10,11 +10,14 @@ from auth_core.serializers import (
     LoginSerializer,
     ChangePasswordSerializer,
     UserProfileSerializer,
+    ForgotPasswordSerializer,
+    ResetPasswordSerializer,
 )
 from auth_core.services.auth_service import AuthService
 from auth_core.services.audit_service import AuditService
 from auth_core.services.rbac_service import RBACService
 from auth_core.services.session_service import SessionService
+from auth_core.services.password_reset_service import PasswordResetService
 
 def _user_response(user) -> dict:
     """Compact user object returned with every token response."""
@@ -184,3 +187,66 @@ class ChangePasswordView(APIView):
         return Response({
             'detail': 'Password changed successfully. Please log in again with your new password.',
         })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/v1/auth/forgot-password/
+# ─────────────────────────────────────────────────────────────────────────────
+class ForgotPasswordView(APIView):
+    """
+    POST /api/v1/auth/forgot-password/
+
+    Accepts an email address and — if an active account exists — sends a
+    one-time reset link valid for 60 minutes.
+
+    Always returns HTTP 200 regardless of whether the email is registered.
+    This prevents user-enumeration attacks: an attacker cannot distinguish
+    "email not found" from "email sent".
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        PasswordResetService.request_reset(
+            email   = serializer.validated_data['email'],
+            request = request,
+        )
+
+        return Response(
+            {'detail': 'If an account with that email exists, a reset link has been sent.'},
+            status=status.HTTP_200_OK,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/v1/auth/reset-password/
+# ─────────────────────────────────────────────────────────────────────────────
+class ResetPasswordView(APIView):
+    """
+    POST /api/v1/auth/reset-password/
+
+    Validates the token from the email link and sets the new password.
+    On success: all active sessions are revoked — the user must log in again.
+    Returns 400 with a descriptive message on any invalid / expired token.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            PasswordResetService.confirm_reset(
+                token_str    = serializer.validated_data['token'],
+                new_password = serializer.validated_data['new_password'],
+                request      = request,
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {'detail': 'Password reset successful. Please log in with your new password.'},
+            status=status.HTTP_200_OK,
+        )

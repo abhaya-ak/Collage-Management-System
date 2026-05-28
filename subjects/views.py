@@ -3,6 +3,7 @@
 from rest_framework import viewsets
 
 from auth_core.permissions import HasPermission, IsAdminRole
+from users.constants import PermissionCodes
 
 from .models import Subject
 from .serializers import SubjectReadSerializer, SubjectWriteSerializer
@@ -10,14 +11,15 @@ from .serializers import SubjectReadSerializer, SubjectWriteSerializer
 
 class SubjectViewSet(viewsets.ModelViewSet):
     """
-    GET    /api/v1/subjects/            list    (authenticated)
-    GET    /api/v1/subjects/{id}/       detail  (authenticated)
+    GET    /api/v1/subjects/            list    (SUBJECTS_VIEW)
+    GET    /api/v1/subjects/{id}/       detail  (SUBJECTS_VIEW)
     POST   /api/v1/subjects/            create  (admin only)
     PUT    /api/v1/subjects/{id}/       update  (admin only)
     PATCH  /api/v1/subjects/{id}/       partial (admin only)
     DELETE /api/v1/subjects/{id}/       destroy (admin only)
     """
-    permission_classes = [HasPermission]
+    permission_classes  = [HasPermission]
+    required_permission = PermissionCodes.SUBJECTS_VIEW
 
     def get_queryset(self):
         return (

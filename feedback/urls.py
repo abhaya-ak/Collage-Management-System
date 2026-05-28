@@ -12,5 +12,7 @@ router.register(r'my',    StudentFeedbackViewSet, basename='my-feedback')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('', FeedbackViewSet.as_view({'post': 'create'})),  # POST /api/v1/feedback/
+    # Explicit path avoids conflict with the router's API-root registered at ''.
+    # Students POST to /api/v1/feedback/submit/ to submit feedback.
+    path('submit/', FeedbackViewSet.as_view({'post': 'create'}), name='feedback-submit'),
 ]

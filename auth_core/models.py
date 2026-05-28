@@ -1,6 +1,8 @@
 # auth_core/models.py
+import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. UserProfile  — extends the thin User(AbstractUser):pass with real data
@@ -70,13 +72,15 @@ class TokenBlacklist(models.Model):
 # ─────────────────────────────────────────────────────────────────────────────
 class AuditLog(models.Model):
     class Event(models.TextChoices):
-        REGISTER          = 'register',          'User Registered'
-        LOGIN             = 'login',             'Login Success'
-        LOGIN_FAILED      = 'login_failed',      'Login Failed'
-        LOGOUT            = 'logout',            'Logout'
-        TOKEN_REFRESH     = 'token_refresh',     'Token Refreshed'
-        PASSWORD_CHANGE   = 'password_change',   'Password Changed'
-        TOKEN_BLACKLISTED = 'token_blacklisted', 'Token Blacklisted'
+        REGISTER               = 'register',               'User Registered'
+        LOGIN                  = 'login',                  'Login Success'
+        LOGIN_FAILED           = 'login_failed',           'Login Failed'
+        LOGOUT                 = 'logout',                 'Logout'
+        TOKEN_REFRESH          = 'token_refresh',          'Token Refreshed'
+        PASSWORD_CHANGE        = 'password_change',        'Password Changed'
+        TOKEN_BLACKLISTED      = 'token_blacklisted',      'Token Blacklisted'
+        PASSWORD_RESET_REQUEST = 'password_reset_request', 'Password Reset Requested'
+        PASSWORD_RESET_CONFIRM = 'password_reset_confirm', 'Password Reset Confirmed'
 
     user       = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -96,3 +100,35 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"Audit({self.event}, user={self.user_id}, {self.created_at})"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. PasswordResetToken  — single-use, time-limited reset credential
+# ─────────────────────────────────────────────────────────────────────────────
+class PasswordResetToken(models.Model):
+    """
+    One row per pending reset request.
+    Consumed (used_at set) after a successful password change.
+    Expired rows are safe to delete by a cron job (expires_at < now, used_at IS NULL).
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='password_reset_tokens',
+    )
+    # UUID4 hex — 128 bits of entropy, URL-safe
+    token      = models.CharField(max_length=64, unique=True, db_index=True, default=uuid.uuid4)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()          # set by PasswordResetService.request_reset()
+    used_at    = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    @property
+    def is_valid(self) -> bool:
+        """True iff the token has not been used and has not yet expired."""
+        return self.used_at is None and timezone.now() < self.expires_at
+
+    def __str__(self):
+        return f"ResetToken(user={self.user_id}, valid={self.is_valid})"

@@ -2,8 +2,9 @@
 """
 Students domain service layer.
 
-StudentService     — profile uniqueness, year validation
-LeaveRequestService — date range validation, status logic
+StudentService      — profile uniqueness, year validation
+LeaveRequestService — date range validation, status logic,
+                      approve / reject transitions
 """
 from django.db import transaction
 from django.utils import timezone
@@ -69,3 +70,29 @@ class LeaveRequestService:
             reason    = reason,
             approved  = False,
         )
+
+    @staticmethod
+    @transaction.atomic
+    def approve(leave_request: LeaveRequest) -> LeaveRequest:
+        """
+        Marks a leave request as approved.
+        Raises ValueError if already approved (idempotency guard).
+        """
+        if leave_request.approved:
+            raise ValueError("This leave request is already approved.")
+        leave_request.approved = True
+        leave_request.save(update_fields=['approved'])
+        return leave_request
+
+    @staticmethod
+    @transaction.atomic
+    def reject(leave_request: LeaveRequest) -> LeaveRequest:
+        """
+        Marks a leave request as rejected / reverted to pending.
+        Raises ValueError if already in pending state.
+        """
+        if not leave_request.approved:
+            raise ValueError("This leave request is already pending / not approved.")
+        leave_request.approved = False
+        leave_request.save(update_fields=['approved'])
+        return leave_request

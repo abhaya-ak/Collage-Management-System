@@ -1,12 +1,9 @@
 # feedback/views.py
-
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-
 from auth_core.permissions import HasPermission, IsAdminRole
-
 from .models import Feedback
 from .services import FeedbackService
 from students.models import Student
@@ -28,7 +25,7 @@ class FeedbackViewSet(
     viewsets.GenericViewSet,
 ):
     """
-    POST  /api/v1/feedback/     submit feedback (student only)
+    POST  /api/v1/feedback/submit/     submit feedback (student only)
     """
     serializer_class   = FeedbackWriteSerializer
     permission_classes = [HasPermission]
@@ -45,8 +42,6 @@ class FeedbackViewSet(
             context={'request': request},
         )
         serializer.is_valid(raise_exception=True)
-        # FIX: was serializer.save(submitted_by=student) — 'submitted_by' is not
-        # a model field. Correct field is 'student'.
         serializer.save(student=student)
 
         return Response(
@@ -80,11 +75,6 @@ class StudentFeedbackViewSet(viewsets.ReadOnlyModelViewSet):
             )
             .order_by('-submitted_at')
         )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Admin — full CRUD + reply action
-# ─────────────────────────────────────────────────────────────────────────────
 
 class AdminFeedbackViewSet(viewsets.ReadOnlyModelViewSet):
     """

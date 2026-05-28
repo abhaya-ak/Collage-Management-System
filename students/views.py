@@ -1,7 +1,9 @@
 # students/views.py
 
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
 
 from auth_core.permissions import HasPermission, IsAdminRole
 from auth_core.services.rbac_service import RBACService
@@ -20,6 +22,7 @@ from .serializers import (
     LeaveRequestReadSerializer,
     LeaveRequestWriteSerializer,
 )
+from .services import LeaveRequestService
 
 _READ_ACTIONS = ('list', 'retrieve')
 
@@ -69,12 +72,15 @@ class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
     """
-    GET    /api/v1/students/leaves/         list    (own records)
-    GET    /api/v1/students/leaves/{id}/    detail
-    POST   /api/v1/students/leaves/         submit
-    PUT    /api/v1/students/leaves/{id}/    update  (pending only)
-    PATCH  /api/v1/students/leaves/{id}/    partial
-    DELETE /api/v1/students/leaves/{id}/    cancel
+    GET    /api/v1/students/leaves/                 list    (own records for students;
+                                                             all records for admins)
+    GET    /api/v1/students/leaves/{id}/            detail
+    POST   /api/v1/students/leaves/                 submit  (students only)
+    PUT    /api/v1/students/leaves/{id}/            update  (student, pending only)
+    PATCH  /api/v1/students/leaves/{id}/            partial
+    DELETE /api/v1/students/leaves/{id}/            cancel
+    POST   /api/v1/students/leaves/{id}/approve/    approve (admin only)
+    POST   /api/v1/students/leaves/{id}/reject/     reject  (admin only)
     """
     permission_classes = [HasPermission]
     required_permission = PermissionCodes.STUDENTS_VIEW_ALL
@@ -85,18 +91,64 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         return LeaveRequestReadSerializer
 
     def get_queryset(self):
+        user = self.request.user
+        # Admins (and superusers) see every leave request so they can review them.
+        if user.is_superuser or RBACService.has_permission(user, PermissionCodes.STUDENTS_MANAGE):
+            return (
+                LeaveRequest.objects
+                .select_related('student', 'student__user')
+                .all()
+            )
+        # Students see only their own leave requests.
         return (
             LeaveRequest.objects
-            .filter(student__user=self.request.user)
+            .filter(student__user=user)
             .select_related('student', 'student__user')
         )
 
     def perform_create(self, serializer):
+        """Only registered students may submit leave requests."""
         try:
             student = Student.objects.get(user=self.request.user)
         except Student.DoesNotExist:
             raise PermissionDenied("Only registered students can submit leave requests.")
         serializer.save(student=student)
+
+    # ── Admin-only status transitions ─────────────────────────────────────────
+
+    @action(detail=True, methods=['post'], url_path='approve',
+            permission_classes=[IsAdminRole])
+    def approve(self, request, pk=None):
+        """
+        POST /api/v1/students/leaves/{id}/approve/
+
+        Approves a pending leave request.
+        Returns 200 with the updated leave object or 400 if already approved.
+        """
+        leave = self.get_object()   # handles 404 automatically
+        try:
+            updated = LeaveRequestService.approve(leave)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = LeaveRequestReadSerializer(updated, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reject',
+            permission_classes=[IsAdminRole])
+    def reject(self, request, pk=None):
+        """
+        POST /api/v1/students/leaves/{id}/reject/
+
+        Reverts an approved leave request back to pending.
+        Returns 200 with the updated leave object or 400 if already pending.
+        """
+        leave = self.get_object()   # handles 404 automatically
+        try:
+            updated = LeaveRequestService.reject(leave)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = LeaveRequestReadSerializer(updated, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class StudentResultViewSet(viewsets.ReadOnlyModelViewSet):

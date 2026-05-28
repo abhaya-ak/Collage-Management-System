@@ -145,13 +145,15 @@ class ResultViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
-        # Admin (role:admin) sees everything; students see own published results
-        if RBACService.has_permission(user, 'role:admin') or user.is_superuser:
+        # Admin (role:admin) sees everything; students see own published results.
+        # Note: Result.student is a direct FK to AUTH_USER_MODEL (User), so we
+        # select_related('student') only — there is no 'student__user' traversal.
+        if RBACService.has_permission(user, PermissionCodes.ACADEMICS_MANAGE_RESULT) or user.is_superuser:
             return Result.objects.select_related(
-                'student', 'student__user', 'exam_routine', 'exam_routine__subject'
+                'student', 'exam_routine', 'exam_routine__subject'
             ).all()
         return Result.objects.select_related(
-            'student', 'student__user', 'exam_routine', 'exam_routine__subject'
+            'student', 'exam_routine', 'exam_routine__subject'
         ).filter(student=user, is_published=True)
 
     def get_serializer_class(self):

@@ -87,7 +87,6 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -96,6 +95,7 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('DB_PORT'),
+        'OPTIONS': {'sslmode': 'require'},   # ← add only this line
     }
 }
 
@@ -109,6 +109,24 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
 }
+
+# ── Email (password reset) ───────────────────────────────────────────────────────────
+# Dev default: console backend — reset links are printed to the terminal.
+# Set EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend in .env for prod.
+EMAIL_BACKEND       = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST          = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT          = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS       = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER     = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@cms.local')
+
+# URL of the frontend app — used to build the reset link sent in the email.
+# Example: https://cms.yourdomain.com
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+
+# How long (minutes) a password-reset token is valid. Default: 60 minutes.
+RESET_TOKEN_EXPIRY_MINUTES = int(os.getenv('RESET_TOKEN_EXPIRY_MINUTES', '60'))
 
 # ── Cache (session validation) ────────────────────────────────────────────────
 # Dev:  LocMemCache — zero config, in-process only (no sharing across workers)

@@ -80,3 +80,28 @@ class UserProfileSerializer(serializers.ModelSerializer):
             p for p in RBACService.load_permissions(obj.user)
             if not p.startswith('role:')
         )
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    """
+    POST /api/v1/auth/forgot-password/
+    Only requires the registered email address.
+    """
+    email = serializers.EmailField()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    """
+    POST /api/v1/auth/reset-password/
+    Token from the email link + the desired new password.
+    """
+    token        = serializers.CharField(min_length=32, max_length=64)
+    new_password = serializers.CharField(
+        write_only=True,
+        min_length=8,
+        style={'input_type': 'password'},
+    )
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
