@@ -207,6 +207,14 @@ class Payment(models.Model):
     # null=True kept because existing DB rows have NULL — safe: auto_now_add
     # always writes a value on INSERT, so no new row will ever be NULL.
     created_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    # ── Soft delete ──────────────────────────────────────────────────────────────
+    # Hard-deleting payment records destroys the financial audit trail.
+    # Soft-delete hides them from student-facing views while keeping every
+    # transaction permanently recoverable for finance reconciliation.
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ["-paid_at"]
 

@@ -55,12 +55,12 @@ class LeaveRequestService:
 
     @staticmethod
     def get_status_label(leave_request: LeaveRequest) -> str:
-        return "Approved" if leave_request.approved else "Pending"
+        return leave_request.get_status_display()
 
     @staticmethod
     @transaction.atomic
     def submit(student: Student, from_date, to_date, reason: str) -> LeaveRequest:
-        """Creates a new leave request for a student."""
+        """Creates a new leave request for a student (status defaults to 'pending')."""
         LeaveRequestService.validate_from_date_not_past(from_date)
         LeaveRequestService.validate_date_range(from_date, to_date)
         return LeaveRequest.objects.create(
@@ -68,31 +68,33 @@ class LeaveRequestService:
             from_date = from_date,
             to_date   = to_date,
             reason    = reason,
-            approved  = False,
+            # status defaults to LeaveRequest.Status.PENDING via model default
         )
 
     @staticmethod
     @transaction.atomic
     def approve(leave_request: LeaveRequest) -> LeaveRequest:
         """
-        Marks a leave request as approved.
+        Transitions leave to 'approved'.
         Raises ValueError if already approved (idempotency guard).
         """
-        if leave_request.approved:
+        if leave_request.status == LeaveRequest.Status.APPROVED:
             raise ValueError("This leave request is already approved.")
-        leave_request.approved = True
-        leave_request.save(update_fields=['approved'])
+        leave_request.status = LeaveRequest.Status.APPROVED
+        leave_request.save(update_fields=['status'])
         return leave_request
 
     @staticmethod
     @transaction.atomic
     def reject(leave_request: LeaveRequest) -> LeaveRequest:
         """
-        Marks a leave request as rejected / reverted to pending.
-        Raises ValueError if already in pending state.
+        Transitions leave to 'rejected'.
+        Raises ValueError if already rejected (idempotency guard).
+        Previously: set approved=False (same as pending) — student could not distinguish.
+        Now: status='rejected' is a distinct, queryable state.
         """
-        if not leave_request.approved:
-            raise ValueError("This leave request is already pending / not approved.")
-        leave_request.approved = False
-        leave_request.save(update_fields=['approved'])
+        if leave_request.status == LeaveRequest.Status.REJECTED:
+            raise ValueError("This leave request has already been rejected.")
+        leave_request.status = LeaveRequest.Status.REJECTED
+        leave_request.save(update_fields=['status'])
         return leave_request

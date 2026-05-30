@@ -64,8 +64,8 @@ class LeaveRequestAdmin(RBACAdmin):
       visibility without write access.
     """
 
-    list_display  = ["student", "from_date", "to_date", "approved"]
-    list_filter   = ["approved"]
+    list_display  = ["student", "from_date", "to_date", "status"]
+    list_filter   = ["status"]
     search_fields = ["student__roll_no", "student__user__first_name"]
     ordering      = ["-from_date"]
     actions       = ["approve_leaves", "reject_leaves"]
@@ -75,7 +75,7 @@ class LeaveRequestAdmin(RBACAdmin):
         if not self.has_change_permission(request):
             self.message_user(request, "Permission denied.", level="error")
             return
-        updated = queryset.update(approved=True)
+        updated = queryset.update(status=LeaveRequest.Status.APPROVED)
         self.message_user(request, f"{updated} leave request(s) approved.")
 
     @admin.action(description="❌ Reject selected leave requests")
@@ -83,5 +83,6 @@ class LeaveRequestAdmin(RBACAdmin):
         if not self.has_change_permission(request):
             self.message_user(request, "Permission denied.", level="error")
             return
-        updated = queryset.update(approved=False)
+        updated = queryset.update(status=LeaveRequest.Status.REJECTED)
         self.message_user(request, f"{updated} leave request(s) rejected.")
+

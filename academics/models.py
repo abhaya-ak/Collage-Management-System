@@ -171,6 +171,13 @@ class Result(models.Model):
         help_text="e.g. Medical exemption, Withheld, Paper under review",
     )
 
+    # ── Soft delete ──────────────────────────────────────────────────────────────
+    # Hard-deleting academic results is dangerous (breaks audit trails and
+    # student transcripts). Setting is_deleted=True hides the row from all
+    # normal querysets while keeping the data permanently recoverable.
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 

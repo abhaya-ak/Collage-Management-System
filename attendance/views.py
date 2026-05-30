@@ -2,6 +2,7 @@
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
@@ -20,14 +21,44 @@ from .serializers import (
 
 from users.constants import PermissionCodes
 
+
+# ── Admin-only write serializer ───────────────────────────────────────────────
+# AttendanceWriteSerializer validates teacher-subject ownership which would
+# always fail for admin users (who are not registered teachers).
+# This thin subclass skips that check but keeps all other validations.
+from rest_framework import serializers as _drf_serializers
+class AttendanceAdminWriteSerializer(AttendanceWriteSerializer):
+    """
+    Like AttendanceWriteSerializer but without the teacher-owns-subject guard.
+    Used exclusively by AdminAttendanceViewSet for admin corrections.
+    """
+    def validate(self, attrs):
+        def _get(f):
+            return attrs.get(f, getattr(self.instance, f, None))
+        try:
+            AttendanceService.validate_no_duplicate(
+                _get('student'), _get('subject'), _get('date'),
+                exclude_pk=self.instance.pk if self.instance else None,
+            )
+        except ValueError as e:
+            raise _drf_serializers.ValidationError(str(e))
+        return attrs
+
 class StudentAttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     """
     GET  /api/v1/attendance/my/         list    (own records)
     GET  /api/v1/attendance/my/{id}/    detail
+
+    ?search=<term>           — searches date (YYYY-MM-DD string match)
+    ?ordering=date,-date     — order by date ascending / descending
     """
-    serializer_class   = AttendanceReadSerializer
-    permission_classes = [HasPermission]
+    serializer_class    = AttendanceReadSerializer
+    permission_classes  = [HasPermission]
     required_permission = PermissionCodes.ATTENDANCE_VIEW_OWN
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = ['date', 'status', 'subject__name', 'subject__code']
+    ordering_fields     = ['date', 'status']
+    ordering            = ['-date']
 
     def get_queryset(self):
         return (
@@ -101,9 +132,17 @@ class TeacherAttendanceViewSet(viewsets.ModelViewSet):
     PUT    /api/v1/attendance/mark/{id}/        correct a record
     PATCH  /api/v1/attendance/mark/{id}/        partial correct
     DELETE /api/v1/attendance/mark/{id}/        remove a record
+
+    ?search=<term>       — subject name/code, student roll
+    ?ordering=date       — order by date
     """
-    permission_classes = [HasPermission]
+    permission_classes  = [HasPermission]
     required_permission = PermissionCodes.ATTENDANCE_MARK
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = ['date', 'status', 'subject__name', 'subject__code',
+                           'student__roll_no']
+    ordering_fields     = ['date', 'status']
+    ordering            = ['-date']
 
     def get_serializer_class(self):
         if self.action == 'bulk':
@@ -162,15 +201,34 @@ class TeacherAttendanceViewSet(viewsets.ModelViewSet):
 # 3. Admin — full picture, read-only
 # ─────────────────────────────────────────────────────────────
 
-class AdminAttendanceViewSet(viewsets.ReadOnlyModelViewSet):
+class AdminAttendanceViewSet(viewsets.ModelViewSet):
     """
-    GET  /api/v1/attendance/admin/                            list    (all records)
-    GET  /api/v1/attendance/admin/{id}/                       detail
-    GET  /api/v1/attendance/admin/summary/?student_id=<id>    per-student summary
-    GET  /api/v1/attendance/admin/summary/?student_id=<id>&subject_id=<id>  drill-down
+    GET    /api/v1/attendance/admin/                            list    (all records)
+    GET    /api/v1/attendance/admin/{id}/                       detail
+    PUT    /api/v1/attendance/admin/{id}/                       correct a record (admin)
+    PATCH  /api/v1/attendance/admin/{id}/                       partial correction
+    GET    /api/v1/attendance/admin/summary/?student_id=<id>    per-student summary
+    GET    /api/v1/attendance/admin/summary/?student_id=<id>&subject_id=<id>  drill-down
+
+    ?search=<term>       — student name/roll, subject name/code
+    ?ordering=date       — newest first by default
     """
-    serializer_class   = AttendanceAdminReadSerializer
-    permission_classes = [IsAdminRole]
+    permission_classes  = [IsAdminRole]
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = ['date', 'status', 'subject__name', 'subject__code',
+                           'student__roll_no', 'student__user__first_name',
+                           'student__user__last_name']
+    ordering_fields     = ['date', 'status', 'student__roll_no']
+    ordering            = ['-date']
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update', 'create'):
+            return AttendanceAdminWriteSerializer
+        return AttendanceAdminReadSerializer
+
+    def perform_update(self, serializer):
+        """Record who made the admin correction in the marked_by field."""
+        serializer.save(marked_by=self.request.user)
 
     def get_queryset(self):
         return (

@@ -86,7 +86,7 @@ class LeaveRequestReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'student_name',
             'from_date', 'to_date', 'reason',
-            'approved', 'status',
+            'status',
         ]
         read_only_fields = fields
 
@@ -95,20 +95,20 @@ class LeaveRequestReadSerializer(serializers.ModelSerializer):
         return f"{u.first_name} {u.last_name}".strip()
 
     def get_status(self, obj):
-        return "Approved" if obj.approved else "Pending"
+        return obj.get_status_display()  # 'Pending' | 'Approved' | 'Rejected'
 
 
 class LeaveRequestWriteSerializer(serializers.ModelSerializer):
     """
     WRITE — students submit this.
     'student' is injected by the view from the auth token.
-    'approved' is never accepted from input — admin sets it separately.
+    'status' is never accepted from input — admin sets it via /approve/ and /reject/ endpoints.
     Returns the read shape on success via to_representation().
     """
     class Meta:
         model  = LeaveRequest
-        fields = ['id', 'from_date', 'to_date', 'reason', 'approved']
-        read_only_fields = ['id', 'approved']
+        fields = ['id', 'from_date', 'to_date', 'reason']
+        read_only_fields = ['id']
 
     # --- Field-level --------------------------------------------------------
 

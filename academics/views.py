@@ -1,7 +1,9 @@
 # academics/views.py
 
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 
 from auth_core.permissions import HasPermission, IsAdminRole
@@ -137,24 +139,33 @@ class ResultViewSet(viewsets.ModelViewSet):
     create   POST   /api/v1/academics/results/               (admin)
     update   PUT    /api/v1/academics/results/{id}/          (admin)
     partial  PATCH  /api/v1/academics/results/{id}/          (admin)
-    destroy  DELETE /api/v1/academics/results/{id}/          (admin)
+    destroy  DELETE /api/v1/academics/results/{id}/          (admin — SOFT delete)
     publish  POST   /api/v1/academics/results/{id}/publish/  (admin)
+
+    ?search=<term>       — student username/name, subject code
+    ?ordering=<field>    — exam_routine__exam_date, marks_obtained, grade
     """
-    permission_classes = [HasPermission]
+    permission_classes  = [HasPermission]
     required_permission = PermissionCodes.ACADEMICS_VIEW_RESULT
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = ['student__username', 'student__first_name',
+                           'student__last_name',
+                           'exam_routine__subject__code',
+                           'exam_routine__subject__name', 'grade']
+    ordering_fields     = ['exam_routine__exam_date', 'marks_obtained', 'grade']
+    ordering            = ['-exam_routine__exam_date']
     
     def get_queryset(self):
         user = self.request.user
-        # Admin (role:admin) sees everything; students see own published results.
+        # Exclude soft-deleted rows for everyone.
         # Note: Result.student is a direct FK to AUTH_USER_MODEL (User), so we
         # select_related('student') only — there is no 'student__user' traversal.
-        if RBACService.has_permission(user, PermissionCodes.ACADEMICS_MANAGE_RESULT) or user.is_superuser:
-            return Result.objects.select_related(
-                'student', 'exam_routine', 'exam_routine__subject'
-            ).all()
-        return Result.objects.select_related(
+        base = Result.objects.filter(is_deleted=False).select_related(
             'student', 'exam_routine', 'exam_routine__subject'
-        ).filter(student=user, is_published=True)
+        )
+        if RBACService.has_permission(user, PermissionCodes.ACADEMICS_MANAGE_RESULT) or user.is_superuser:
+            return base.all()
+        return base.filter(student=user, is_published=True)
 
     def get_serializer_class(self):
         if self.action in _READ_ACTIONS:
@@ -165,6 +176,17 @@ class ResultViewSet(viewsets.ModelViewSet):
         if self.action not in _READ_ACTIONS:
             return [IsAdminRole()]
         return [HasPermission()]
+
+    def perform_destroy(self, instance):
+        """
+        Soft-delete instead of hard-delete.
+        Sets is_deleted=True and records the timestamp.
+        The row remains in the DB for audit purposes; it is excluded from
+        all normal get_queryset() calls via the is_deleted=False filter.
+        """
+        instance.is_deleted = True
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=['is_deleted', 'deleted_at'])
 
     @action(
         detail=True,

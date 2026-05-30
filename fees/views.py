@@ -1,7 +1,9 @@
 # fees/views.py
 
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
@@ -28,8 +30,8 @@ from users.constants import PermissionCodes
 
 class FeeStructureViewSet(viewsets.ModelViewSet):
     """
-    GET    /api/v1/fees/structures/           list    (authenticated)
-    GET    /api/v1/fees/structures/{id}/      detail  (authenticated)
+    GET    /api/v1/fees/structures/           list    (student / admin / teacher)
+    GET    /api/v1/fees/structures/{id}/      detail  (student / admin / teacher)
     POST   /api/v1/fees/structures/           create  (admin only)
     PUT    /api/v1/fees/structures/{id}/      update  (admin only)
     PATCH  /api/v1/fees/structures/{id}/      partial (admin only)
@@ -37,7 +39,14 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
     """
     queryset           = FeeStructure.objects.all()
     permission_classes = [HasPermission]
-    required_permission = PermissionCodes.FEES_VIEW_ALL
+
+    @property
+    def required_permission(self):
+        # Students (FEES_VIEW_OWN) can read fee structures;
+        # write actions are further guarded by IsAdminRole() below.
+        if self.action in ('list', 'retrieve'):
+            return PermissionCodes.FEES_VIEW_OWN
+        return PermissionCodes.FEES_MANAGE
 
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
@@ -59,10 +68,18 @@ class StudentFeeViewSet(viewsets.ReadOnlyModelViewSet):
     GET   /api/v1/fees/bills/               list    (own bills — student | all — admin)
     GET   /api/v1/fees/bills/{id}/          detail
     POST  /api/v1/fees/bills/generate/      generate bill for a student  (admin only)
+
+    ?search=<term>       — student name, roll number
+    ?ordering=<field>    — due_date, status, created_at
     """
-    serializer_class   = StudentFeeReadSerializer
-    permission_classes = [HasPermission]
+    serializer_class    = StudentFeeReadSerializer
+    permission_classes  = [HasPermission]
     required_permission = PermissionCodes.FEES_VIEW_OWN
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = ['student__roll_no', 'student__user__first_name',
+                           'student__user__last_name', 'status']
+    ordering_fields     = ['due_date', 'status', 'created_at', 'total_amount']
+    ordering            = ['-created_at']
 
     def get_queryset(self):
         from auth_core.services.rbac_service import RBACService
@@ -105,11 +122,21 @@ class PaymentViewSet(viewsets.ModelViewSet):
     POST   /api/v1/fees/payments/               submit payment   (student)
     PUT    /api/v1/fees/payments/{id}/          update           (student)
     PATCH  /api/v1/fees/payments/{id}/          partial update   (student)
-    DELETE /api/v1/fees/payments/{id}/          cancel           (student)
+    DELETE /api/v1/fees/payments/{id}/          soft-cancel      (student — pending only)
     POST   /api/v1/fees/payments/{id}/verify/   verify payment   (admin only)
+
+    ?search=<term>       — student name, roll, payment method
+    ?ordering=<field>    — paid_at, amount, verification_status
     """
-    permission_classes = [HasPermission]
+    permission_classes  = [HasPermission]
     required_permission = PermissionCodes.FEES_SUBMIT_PAYMENT
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = ['student_fee__student__roll_no',
+                           'student_fee__student__user__first_name',
+                           'student_fee__student__user__last_name',
+                           'payment_method', 'verification_status', 'reference']
+    ordering_fields     = ['paid_at', 'amount', 'verification_status']
+    ordering            = ['-paid_at']
 
     def get_serializer_class(self):
         if self.action == 'verify':
@@ -121,7 +148,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         from auth_core.services.rbac_service import RBACService
         user = self.request.user
-        qs   = Payment.objects.select_related(
+        qs   = Payment.objects.filter(is_deleted=False).select_related(
             'student_fee',
             'student_fee__student',
             'student_fee__student__user',
@@ -130,6 +157,21 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if RBACService.has_permission(user, 'role:admin') or user.is_superuser:
             return qs.all()
         return qs.filter(student_fee__student__user=user)
+
+    def perform_destroy(self, instance):
+        """
+        Soft-delete: marks the payment as deleted instead of removing the row.
+        Blocks deletion of already-verified payments to preserve the financial
+        audit trail — verified records can only be reversed by admin via /verify/.
+        """
+        if instance.verification_status == Payment.VerificationStatus.VERIFIED:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                'Verified payments cannot be deleted. Contact an administrator to reverse this payment.'
+            )
+        instance.is_deleted = True
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=['is_deleted', 'deleted_at'])
 
     def perform_create(self, serializer):
         # Only registered students can submit payments

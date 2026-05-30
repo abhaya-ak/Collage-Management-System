@@ -30,8 +30,5 @@ class RolePermission(models.Model):
         unique_together = ("role", "permission")  # prevents duplicate assignments
 
 class UserRole(models.Model):
-    # OneToOneField is correct here — one user, one role.
-    # Switching to ForeignKey would break every UserRole.objects.get(user=user)
-    # call in the codebase with MultipleObjectsReturned.
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     role = models.ForeignKey(Role, on_delete=models.CASCADE)

@@ -20,15 +20,30 @@ class Teacher(models.Model):
 
 # 9) LeaveRequest
 class LeaveRequest(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+
+    class Status(models.TextChoices):
+        PENDING  = 'pending',  'Pending'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    student   = models.ForeignKey(Student, on_delete=models.CASCADE)
     from_date = models.DateField()
-    to_date = models.DateField()
-    reason = models.TextField()
-    
-    # We use a BooleanField with a default of False, meaning leaves are 
-    # automatically considered "Pending" or "Not Approved" until an admin changes it.
-    approved = models.BooleanField(default=False)
+    to_date   = models.DateField()
+    reason    = models.TextField()
+
+    # Three-state status:
+    #   pending  — awaiting admin review (default)
+    #   approved — admin accepted the request
+    #   rejected — admin explicitly declined (was indistinguishable from pending with bool)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
 
     def __str__(self):
-        status = "Approved" if self.approved else "Pending"
-        return f"Leave: {self.student.roll_no} ({self.from_date} to {self.to_date}) - {status}"
+        return (
+            f"Leave: {self.student.roll_no} "
+            f"({self.from_date} to {self.to_date}) - {self.get_status_display()}"
+        )

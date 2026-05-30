@@ -27,8 +27,9 @@ class FeedbackViewSet(
     """
     POST  /api/v1/feedback/submit/     submit feedback (student only)
     """
-    serializer_class   = FeedbackWriteSerializer
-    permission_classes = [HasPermission]
+    serializer_class    = FeedbackWriteSerializer
+    permission_classes  = [HasPermission]
+    required_permission = PermissionCodes.FEEDBACK_SUBMIT  # only students have this
 
     def create(self, request):
         """Submit a new feedback item. Only registered students can submit."""

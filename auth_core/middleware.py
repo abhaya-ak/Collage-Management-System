@@ -9,6 +9,7 @@ _EXEMPT_PREFIXES = (
     '/api/v1/auth/login/',
     '/api/v1/auth/register/',
     '/api/v1/auth/refresh/',
+    '/api/v1/auth/logout/',   # exempt so revoked sessions can still blacklist their refresh token
     '/admin/',
 )
 

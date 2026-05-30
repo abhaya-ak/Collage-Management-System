@@ -29,24 +29,31 @@ _READ_ACTIONS = ('list', 'retrieve')
 
 class StudentProfileViewSet(viewsets.ModelViewSet):
     """
-    GET    /api/v1/students/profiles/           list    (authenticated)
-    GET    /api/v1/students/profiles/{id}/      detail  (authenticated)
+    GET    /api/v1/students/profiles/           list    (student: own profile; admin/teacher: all)
+    GET    /api/v1/students/profiles/{id}/      detail  (student: own profile; admin/teacher: all)
     POST   /api/v1/students/profiles/           create  (admin only)
     PUT    /api/v1/students/profiles/{id}/      update  (admin only)
     PATCH  /api/v1/students/profiles/{id}/      partial (admin only)
     DELETE /api/v1/students/profiles/{id}/      destroy (admin only)
     """
+    permission_classes = [HasPermission]
+
+    @property
+    def required_permission(self):
+        # Students (STUDENTS_VIEW_OWN) can read; admins (STUDENTS_MANAGE) can write.
+        # Write actions are further guarded by IsAdminRole() below.
+        if self.action in _READ_ACTIONS:
+            return PermissionCodes.STUDENTS_VIEW_OWN
+        return PermissionCodes.STUDENTS_MANAGE
+
     def get_queryset(self):
         user = self.request.user
-        # Admin, teacher, accounts, receptionist — anyone with STUDENTS_VIEW_ALL
+        # Admins / teachers / accounts / receptionist — anyone with STUDENTS_VIEW_ALL
         if RBACService.has_permission(user, PermissionCodes.STUDENTS_VIEW_ALL) \
            or user.is_superuser:
             return Student.objects.select_related('user').all()
         # Students see only their own profile
         return Student.objects.select_related('user').filter(user=user)
-    
-    permission_classes = [HasPermission]
-    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
 
     def get_serializer_class(self):
         if self.action in _READ_ACTIONS:
@@ -61,29 +68,31 @@ class StudentProfileViewSet(viewsets.ModelViewSet):
 
 class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    GET  /api/v1/students/teachers/         list    (authenticated)
-    GET  /api/v1/students/teachers/{id}/    detail  (authenticated)
+    GET  /api/v1/students/teachers/         list    (student / teacher / admin)
+    GET  /api/v1/students/teachers/{id}/    detail  (student / teacher / admin)
     """
-    queryset           = Teacher.objects.select_related('user').all()
-    serializer_class   = TeacherSerializer
-    permission_classes = [HasPermission]
-    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
+    queryset            = Teacher.objects.select_related('user').all()
+    serializer_class    = TeacherSerializer
+    permission_classes  = [HasPermission]
+    # STUDENTS_VIEW_OWN is the minimum permission — every authenticated student has it.
+    required_permission = PermissionCodes.STUDENTS_VIEW_OWN
 
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
     """
-    GET    /api/v1/students/leaves/                 list    (own records for students;
-                                                             all records for admins)
+    GET    /api/v1/students/leaves/                 list    (student: own; admin: all)
     GET    /api/v1/students/leaves/{id}/            detail
-    POST   /api/v1/students/leaves/                 submit  (students only)
+    POST   /api/v1/students/leaves/                 submit  (students + admins)
     PUT    /api/v1/students/leaves/{id}/            update  (student, pending only)
     PATCH  /api/v1/students/leaves/{id}/            partial
     DELETE /api/v1/students/leaves/{id}/            cancel
     POST   /api/v1/students/leaves/{id}/approve/    approve (admin only)
     POST   /api/v1/students/leaves/{id}/reject/     reject  (admin only)
     """
-    permission_classes = [HasPermission]
-    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
+    permission_classes  = [HasPermission]
+    # Students can list/create/update/delete their own leaves; approve/reject
+    # are separately guarded by IsAdminRole on those @action decorators.
+    required_permission = PermissionCodes.STUDENTS_VIEW_OWN
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -97,13 +106,14 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             return (
                 LeaveRequest.objects
                 .select_related('student', 'student__user')
-                .all()
+                .order_by('-from_date', '-id')
             )
         # Students see only their own leave requests.
         return (
             LeaveRequest.objects
             .filter(student__user=user)
             .select_related('student', 'student__user')
+            .order_by('-from_date', '-id')
         )
 
     def perform_create(self, serializer):
@@ -153,34 +163,41 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
 class StudentResultViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    GET  /api/v1/students/results/          list    (own + published)
+    GET  /api/v1/students/results/          list    (own published results)
     GET  /api/v1/students/results/{id}/     detail
     """
-    serializer_class   = ResultStudentReadSerializer
-    permission_classes = [HasPermission]
-    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
+    serializer_class    = ResultStudentReadSerializer
+    permission_classes  = [HasPermission]
+    required_permission = PermissionCodes.STUDENTS_VIEW_OWN
 
     def get_queryset(self):
         return (
             Result.objects
-            .filter(student=self.request.user, is_published=True)
+            .filter(student=self.request.user, is_published=True, is_deleted=False)
             .select_related('exam_routine', 'exam_routine__subject')
         )
 
 
 class TeacherRoutineViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    GET  /api/v1/students/teacher-routines/         list    (own subjects)
+    GET  /api/v1/students/teacher-routines/         list    (teacher: own subjects; others: empty)
     GET  /api/v1/students/teacher-routines/{id}/    detail
+
+    Permission note: no existing RBAC code is both semantically correct for
+    "view own routine" AND exclusive to teachers (ACADEMICS_VIEW_TIMETABLE is
+    also granted to students). The queryset filter
+        .filter(subject__teacher__user=self.request.user, is_active=True)
+    is the access boundary — non-teachers always receive an empty queryset.
+    Add a TEACHER_VIEW_OWN_ROUTINE permission code to fully harden this if needed.
     """
-    serializer_class   = RoutineReadSerializer
-    permission_classes = [HasPermission]
-    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
+    serializer_class    = RoutineReadSerializer
+    permission_classes  = [HasPermission]
+    required_permission = PermissionCodes.ACADEMICS_VIEW_TIMETABLE  # teachers + students both have this; queryset scopes to own subjects
 
     def get_queryset(self):
         return (
             Routine.objects
-            .filter(subject__teacher__user=self.request.user)
+            .filter(subject__teacher__user=self.request.user, is_active=True)
             .select_related(
                 'subject',
                 'subject__faculty',
@@ -192,12 +209,15 @@ class TeacherRoutineViewSet(viewsets.ReadOnlyModelViewSet):
 
 class TeacherFeedbackViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    GET  /api/v1/students/teacher-feedback/         list    (targeted at self)
+    GET  /api/v1/students/teacher-feedback/         list    (teacher: feedback about self; others: empty)
     GET  /api/v1/students/teacher-feedback/{id}/    detail
+
+    FEEDBACK_VIEW_ALL is the correct gate: students only have FEEDBACK_SUBMIT,
+    so they are blocked at the RBAC layer before the queryset runs.
     """
-    serializer_class   = FeedbackTeacherReadSerializer
-    permission_classes = [HasPermission]
-    required_permission = PermissionCodes.STUDENTS_VIEW_ALL
+    serializer_class    = FeedbackTeacherReadSerializer
+    permission_classes  = [HasPermission]
+    required_permission = PermissionCodes.FEEDBACK_VIEW_ALL  # students have FEEDBACK_SUBMIT, not this
 
     def get_queryset(self):
         return (

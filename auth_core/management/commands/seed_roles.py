@@ -71,12 +71,14 @@ class Command(BaseCommand):
 
         for role_name in all_role_names:
             if dry_run:
-                exists = Role.objects.filter(name=role_name).exists()
+                role_obj = Role.objects.filter(name=role_name).first()
+                exists = role_obj is not None
                 tag = '[EXISTS]' if exists else '[WOULD CREATE]'
                 self.stdout.write(f'  {tag} Role: {role_name}')
-                # Still need the object for the dry-run permission check below
-                role_obj, _ = Role.objects.get_or_create(name=role_name)
-                role_objects[role_name] = role_obj
+                # Only populate the dict if the row already exists;
+                # dry-run must not write anything to the database.
+                if role_obj:
+                    role_objects[role_name] = role_obj
             else:
                 role_obj, created = Role.objects.get_or_create(name=role_name)
                 role_objects[role_name] = role_obj
@@ -102,14 +104,14 @@ class Command(BaseCommand):
             human_name = action_resource.replace('_', ' ').title()
 
             if dry_run:
-                exists = Permission.objects.filter(code=code).exists()
+                perm_obj = Permission.objects.filter(code=code).first()
+                exists = perm_obj is not None
                 tag = '[EXISTS]' if exists else '[WOULD CREATE]'
                 self.stdout.write(f'  {tag} Permission: {code}')
-                perm_obj, _ = Permission.objects.get_or_create(
-                    code=code,
-                    defaults={'name': human_name, 'module': module},
-                )
-                permission_objects[code] = perm_obj
+                # Only populate the dict if the row already exists;
+                # dry-run must not write anything to the database.
+                if perm_obj:
+                    permission_objects[code] = perm_obj
             else:
                 perm_obj, created = Permission.objects.get_or_create(
                     code=code,
