@@ -19,6 +19,8 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from auth_core.models import AuditLog
+from auth_core.services.audit_service import AuditService
 from .models import FeeStructure, StudentFee, Payment
 
 
@@ -94,17 +96,26 @@ class StudentFeeService:
 
     @staticmethod
     @transaction.atomic
-    def generate_bill(student, fee_structure, due_date=None, remarks='') -> StudentFee:
+    def generate_bill(
+        student,
+        fee_structure,
+        due_date=None,
+        remarks='',
+        actor=None,
+        request=None,
+    ) -> StudentFee:
         """
         Creates a StudentFee (bill) for a student.
         - total_amount is SNAPSHOTTED from fee_structure.total at generation time.
           If the fee plan changes later, existing bills are NOT retroactively altered.
         - status starts as PENDING.
+        - Audit: FEE_BILL_GENERATED logged OUTSIDE the transaction so a logging
+          failure can never roll back a completed bill creation.
         """
         StudentFeeService.validate_no_duplicate_bill(student, fee_structure)
         StudentFeeService.validate_fee_structure_not_expired(fee_structure)
 
-        return StudentFee.objects.create(
+        bill = StudentFee.objects.create(
             student       = student,
             fee_structure = fee_structure,
             total_amount  = fee_structure.total,     # snapshot
@@ -112,6 +123,21 @@ class StudentFeeService:
             due_date      = due_date or fee_structure.due_date,
             remarks       = remarks,
         )
+
+        # Audit is OUTSIDE the transaction — a logging failure must never
+        # roll back a bill that has already been successfully created.
+        AuditService.log(
+            event    = AuditLog.Event.FEE_BILL_GENERATED,
+            user     = actor,
+            request  = request,
+            metadata = {
+                'bill_id':       bill.pk,
+                'student_id':    student.pk,
+                'structure_id':  fee_structure.pk,
+                'total_amount':  str(bill.total_amount),
+            },
+        )
+        return bill
 
     @staticmethod
     def is_overdue(student_fee: StudentFee) -> bool:
@@ -204,17 +230,20 @@ class PaymentService:
         reference: str = '',
         screenshot=None,
         paid_at=None,
+        actor=None,
+        request=None,
     ) -> Payment:
         """
         Creates a Payment record.
         Does NOT update StudentFee.status — that happens only when
         a payment is VERIFIED (via verify_payment).
+        Audit: PAYMENT_SUBMITTED logged outside the transaction.
         """
         PaymentService.validate_bill_not_fully_paid(student_fee)
         PaymentService.validate_amount_vs_balance(amount, student_fee)
         PaymentService.validate_screenshot_required(payment_method, screenshot)
 
-        return Payment.objects.create(
+        payment = Payment.objects.create(
             student_fee     = student_fee,
             amount          = amount,
             payment_method  = payment_method,
@@ -224,6 +253,20 @@ class PaymentService:
             verification_status = Payment.VerificationStatus.PENDING,
         )
 
+        # Audit OUTSIDE transaction — logging failure must not roll back payment.
+        AuditService.log(
+            event    = AuditLog.Event.PAYMENT_SUBMITTED,
+            user     = actor,
+            request  = request,
+            metadata = {
+                'payment_id':    payment.pk,
+                'bill_id':       student_fee.pk,
+                'amount':        str(amount),
+                'method':        payment_method,
+            },
+        )
+        return payment
+
     @staticmethod
     @transaction.atomic
     def verify_payment(
@@ -231,6 +274,7 @@ class PaymentService:
         new_status: str,
         admin_note: str,
         verified_by,
+        request=None,
     ) -> Payment:
         """
         Admin approves or rejects a PENDING payment.
@@ -238,6 +282,7 @@ class PaymentService:
         On REJECTED: no status change to StudentFee.
 
         Raises ValueError if payment is not PENDING, or if rejecting without a note.
+        Audit: PAYMENT_VERIFIED or PAYMENT_REJECTED logged OUTSIDE the transaction.
         """
         if payment.verification_status != Payment.VerificationStatus.PENDING:
             raise ValueError(
@@ -268,4 +313,23 @@ class PaymentService:
         if new_status == Payment.VerificationStatus.VERIFIED:
             StudentFeeService.recompute_status(payment.student_fee)
 
+        # Audit is OUTSIDE the transaction — a logging failure must never
+        # roll back a completed verification decision.
+        audit_event = (
+            AuditLog.Event.PAYMENT_VERIFIED
+            if new_status == Payment.VerificationStatus.VERIFIED
+            else AuditLog.Event.PAYMENT_REJECTED
+        )
+        AuditService.log(
+            event    = audit_event,
+            user     = verified_by,
+            request  = request,
+            metadata = {
+                'payment_id': payment.pk,
+                'bill_id':    payment.student_fee_id,
+                'amount':     str(payment.amount),
+                'admin_note': admin_note,
+                'decision':   new_status,
+            },
+        )
         return payment

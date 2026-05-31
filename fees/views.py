@@ -204,6 +204,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 new_status  = serializer.validated_data['verification_status'],
                 admin_note  = serializer.validated_data.get('admin_note', ''),
                 verified_by = request.user,
+                request     = request,
             )
         except ValueError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -1,6 +1,5 @@
 # academics/views.py
 
-from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -179,14 +178,14 @@ class ResultViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         """
-        Soft-delete instead of hard-delete.
-        Sets is_deleted=True and records the timestamp.
-        The row remains in the DB for audit purposes; it is excluded from
-        all normal get_queryset() calls via the is_deleted=False filter.
+        Routes through ResultService.soft_delete() so the action is captured
+        in the audit log. The service sets is_deleted=True and records deleted_at.
         """
-        instance.is_deleted = True
-        instance.deleted_at = timezone.now()
-        instance.save(update_fields=['is_deleted', 'deleted_at'])
+        ResultService.soft_delete(
+            result  = instance,
+            actor   = self.request.user,
+            request = self.request,
+        )
 
     @action(
         detail=True,
@@ -198,7 +197,11 @@ class ResultViewSet(viewsets.ModelViewSet):
         """POST /api/v1/academics/results/{id}/publish/"""
         result = self.get_object()
         try:
-            updated = ResultService.publish(result)
+            updated = ResultService.publish(
+                result  = result,
+                actor   = request.user,
+                request = request,
+            )
         except ValueError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(

@@ -7,6 +7,7 @@ from auth_core.models import AuditLog, UserProfile
 from auth_core.services.jwt_service import JWTService
 from auth_core.services.session_service import SessionService
 from auth_core.services.audit_service import AuditService
+from auth_core.services.lockout_service import LockoutService
 from users.models import Role, UserRole
 from users.constants import RoleNames
 
@@ -71,21 +72,26 @@ class AuthService:
     @staticmethod
     def login(username: str, password: str, request=None) -> dict:
         """
-        1. authenticate() — Django's built-in credential check (outside tx — no writes)
-        2. If fail: log LOGIN_FAILED (outside tx — must persist even on failure), raise 401
-        3. If inactive: raise 401
-        4. [ATOMIC] Generate tokens + create session
-        5. Audit log LOGIN (outside tx — non-fatal)
+        1. Lockout check — abort early if (username, ip) is currently locked
+        2. authenticate() — Django's built-in credential check (outside tx — no writes)
+        3. If fail: record failure (may trigger lock), audit LOGIN_FAILED, raise 401
+        4. If inactive: raise 401
+        5. Clear lockout tracker (successful login resets the window)
+        6. [ATOMIC] Generate tokens + create session
+        7. Audit log LOGIN (outside tx — non-fatal)
         Returns: {'user': User, 'access': str, 'refresh': str, 'jti': str}
-
-        authenticate() and LOGIN_FAILED audit are intentionally OUTSIDE the transaction:
-        - authenticate() does no writes
-        - LOGIN_FAILED must be recorded even when the request fails
         """
-        # Step 1 — credential check (read-only, no transaction needed)
+        ip = AuthService._get_ip(request)
+
+        # Step 1 — abort before any expensive work if the IP+username is locked
+        LockoutService.check_lockout(username, ip)
+
+        # Step 2 — credential check (read-only, no transaction needed)
         user = authenticate(request=request, username=username, password=password)
 
         if user is None:
+            # Record failure FIRST (may set locked_until)
+            LockoutService.record_failure(username, ip)
             # LOGIN_FAILED must persist independently — not rolled back with any tx
             AuditService.log(
                 event    = AuditLog.Event.LOGIN_FAILED,
@@ -97,7 +103,10 @@ class AuthService:
         if not user.is_active:
             raise AuthenticationFailed('This account has been deactivated.')
 
-        # Step 2 — atomic token issuance + session creation
+        # Step 3 — clear the failure tracker; successful login resets the window
+        LockoutService.clear(username, ip)
+
+        # Step 4 — atomic token issuance + session creation
         # If SessionService.create() fails (e.g. DB constraint), the generated
         # tokens are never returned — no orphan tokens with missing sessions.
         with transaction.atomic():
@@ -114,6 +123,18 @@ class AuthService:
         )
 
         return {'user': user, **tokens}
+
+    # ── Internal helper ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _get_ip(request) -> str | None:
+        """Extract the real client IP, honouring X-Forwarded-For if present."""
+        if request is None:
+            return None
+        xff = request.META.get('HTTP_X_FORWARDED_FOR')
+        if xff:
+            return xff.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')
 
     # ── Logout ────────────────────────────────────────────────────────────────
 

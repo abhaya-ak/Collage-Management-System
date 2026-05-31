@@ -1,8 +1,7 @@
-# auth_core/models.py
-import uuid
 from django.db import models
-from django.conf import settings
 from django.utils import timezone
+from django.conf import settings
+import uuid
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. UserProfile  — extends the thin User(AbstractUser):pass with real data
@@ -72,6 +71,7 @@ class TokenBlacklist(models.Model):
 # ─────────────────────────────────────────────────────────────────────────────
 class AuditLog(models.Model):
     class Event(models.TextChoices):
+        # ── Auth events (existing) ────────────────────────────────────────────
         REGISTER               = 'register',               'User Registered'
         LOGIN                  = 'login',                  'Login Success'
         LOGIN_FAILED           = 'login_failed',           'Login Failed'
@@ -81,6 +81,14 @@ class AuditLog(models.Model):
         TOKEN_BLACKLISTED      = 'token_blacklisted',      'Token Blacklisted'
         PASSWORD_RESET_REQUEST = 'password_reset_request', 'Password Reset Requested'
         PASSWORD_RESET_CONFIRM = 'password_reset_confirm', 'Password Reset Confirmed'
+        # ── Fees events ───────────────────────────────────────────────────────
+        FEE_BILL_GENERATED     = 'fee_bill_generated',     'Fee Bill Generated'
+        PAYMENT_SUBMITTED      = 'payment_submitted',      'Payment Submitted'
+        PAYMENT_VERIFIED       = 'payment_verified',       'Payment Verified'
+        PAYMENT_REJECTED       = 'payment_rejected',       'Payment Rejected'
+        # ── Academics events ──────────────────────────────────────────────────
+        RESULT_PUBLISHED       = 'result_published',       'Result Published'
+        RESULT_DELETED         = 'result_deleted',         'Result Soft-Deleted'
 
     user       = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -88,7 +96,7 @@ class AuditLog(models.Model):
         on_delete=models.SET_NULL,
         related_name='audit_logs',
     )
-    event      = models.CharField(max_length=30, choices=Event.choices, db_index=True)
+    event      = models.CharField(max_length=40, choices=Event.choices, db_index=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
     # Flexible metadata — e.g. {'username_attempted': 'admin'} for LOGIN_FAILED
@@ -132,3 +140,47 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"ResetToken(user={self.user_id}, valid={self.is_valid})"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. LoginAttempt  — brute-force lockout tracker (per username + IP)
+#    Table created by migration 0004_loginattempt
+# ─────────────────────────────────────────────────────────────────────────────
+class LoginAttempt(models.Model):
+    """
+    One row per (username, ip_address) pair.
+    - failed_count  : incremented on every wrong-password attempt
+    - locked_until  : set to now()+15m when failed_count reaches MAX_ATTEMPTS
+    - last_attempt  : timestamp of the most recent failed attempt
+
+    On a SUCCESSFUL login the row is deleted by LockoutService.clear().
+    """
+    MAX_ATTEMPTS    = 5
+    LOCKOUT_MINUTES = 15
+
+    username      = models.CharField(max_length=150, db_index=True)
+    ip_address    = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    failed_count  = models.PositiveSmallIntegerField(default=0)
+    locked_until  = models.DateTimeField(null=True, blank=True)
+    last_attempt  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('username', 'ip_address')]
+        ordering        = ['-last_attempt']
+
+    @property
+    def is_locked(self) -> bool:
+        """True iff the account is currently inside the lockout window."""
+        return self.locked_until is not None and timezone.now() < self.locked_until
+
+    @property
+    def seconds_remaining(self) -> int:
+        """Seconds left in the lockout window (0 if not locked)."""
+        if not self.is_locked:
+            return 0
+        return max(0, int((self.locked_until - timezone.now()).total_seconds()))
+
+    def __str__(self):
+        return (
+            f"LoginAttempt(user={self.username}, ip={self.ip_address}, "
+            f"count={self.failed_count}, locked={self.is_locked})"
+        )

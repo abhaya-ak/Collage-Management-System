@@ -13,6 +13,8 @@ from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 
+from auth_core.models import AuditLog
+from auth_core.services.audit_service import AuditService
 from subjects.models import Subject
 from students.models import Teacher
 
@@ -257,9 +259,51 @@ class ResultService:
 
     @staticmethod
     @transaction.atomic
-    def publish(result) -> object:
-        """Publishes a result. Raises ValueError if already published."""
+    def publish(result, actor=None, request=None) -> object:
+        """Publishes a result. Raises ValueError if already published.
+        Audit: RESULT_PUBLISHED logged OUTSIDE the transaction.
+        """
         ResultService.validate_not_already_published(result)
         result.is_published = True
         result.save(update_fields=['is_published'])
+
+        # Audit OUTSIDE transaction — logging failure must not roll back publish.
+        AuditService.log(
+            event    = AuditLog.Event.RESULT_PUBLISHED,
+            user     = actor,
+            request  = request,
+            metadata = {
+                'result_id':       result.pk,
+                'student_id':      result.student_id,
+                'exam_routine_id': result.exam_routine_id,
+                'grade':           result.grade,
+                'marks_obtained':  result.marks_obtained,
+            },
+        )
         return result
+
+    @staticmethod
+    @transaction.atomic
+    def soft_delete(result, actor=None, request=None) -> None:
+        """
+        Marks the result as deleted (is_deleted=True).
+        Use this instead of perform_destroy calling instance.save() directly
+        so the action is always captured in the audit log.
+
+        Audit: RESULT_DELETED logged OUTSIDE the transaction.
+        """
+        result.is_deleted = True
+        result.deleted_at = timezone.now()
+        result.save(update_fields=['is_deleted', 'deleted_at'])
+
+        # Audit OUTSIDE transaction — logging failure must not roll back delete.
+        AuditService.log(
+            event    = AuditLog.Event.RESULT_DELETED,
+            user     = actor,
+            request  = request,
+            metadata = {
+                'result_id':       result.pk,
+                'student_id':      result.student_id,
+                'exam_routine_id': result.exam_routine_id,
+            },
+        )
