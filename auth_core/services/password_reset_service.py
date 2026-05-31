@@ -1,6 +1,8 @@
 # auth_core/services/password_reset_service.py
 """
-Password reset flow — two-step:
+Password reset & welcome-email flow.
+
+Password Reset (forgot password) — two-step:
 
   Step 1: POST /api/v1/auth/forgot-password/
           PasswordResetService.request_reset(email)
@@ -9,6 +11,14 @@ Password reset flow — two-step:
   Step 2: POST /api/v1/auth/reset-password/
           PasswordResetService.confirm_reset(token, new_password)
           → validates token, sets password, revokes all sessions
+
+Welcome Email (new account creation):
+
+  Called by UserViewSet.create() after a new user is created by an admin.
+  PasswordResetService.send_welcome_email(user, request)
+  → creates a PasswordResetToken (same model), sends a welcome email with
+    a one-time "set your password" link. The student/teacher then uses the
+    existing /reset-password endpoint to activate their account.
 
 Design decisions
 ────────────────
@@ -156,6 +166,43 @@ class PasswordResetService:
             metadata = {'token_prefix': token_str[:8]},
         )
 
+    # ── Welcome email (new account creation) ──────────────────────────────────
+
+    @staticmethod
+    def send_welcome_email(user, request=None) -> None:
+        """
+        Creates a one-time set-password token for a freshly created account
+        and sends a welcome email containing the activation link.
+
+        Uses the same PasswordResetToken model and confirm_reset() endpoint —
+        no new DB table or view needed.  The token expires in _EXPIRY_MINUTES
+        (default 60 min, set via RESET_TOKEN_EXPIRY_MINUTES in .env).
+
+        Called OUTSIDE the account-creation transaction so that a transient
+        SMTP failure never rolls back the created user row.
+        """
+        token_str = uuid.uuid4().hex
+
+        with transaction.atomic():
+            # Defensive: clear any stale unused tokens (edge case: admin re-creates
+            # an account that was soft-deleted and recreated with the same email).
+            PasswordResetToken.objects.filter(user=user, used_at__isnull=True).delete()
+
+            welcome_token = PasswordResetToken.objects.create(
+                user       = user,
+                token      = token_str,
+                expires_at = timezone.now() + timedelta(minutes=_EXPIRY_MINUTES),
+            )
+
+        PasswordResetService._send_welcome_email_msg(user, welcome_token)
+
+        AuditService.log(
+            event    = AuditLog.Event.PASSWORD_RESET_REQUEST,
+            user     = user,
+            request  = request,
+            metadata = {'reason': 'account_creation_welcome', 'email': user.email},
+        )
+
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     @staticmethod
@@ -193,4 +240,42 @@ class PasswordResetService:
             # created; the user can request another reset if this one silently failed.
             logger.exception(
                 'PasswordResetService: failed to send email to user_id=%s', user.pk
+            )
+
+    @staticmethod
+    def _send_welcome_email_msg(user, welcome_token: PasswordResetToken) -> None:
+        """
+        Constructs and sends the account-activation welcome email.
+
+        The set-password URL reuses FRONTEND_URL + /set-password (or the admin
+        can point it at /reset-password — both hit the same confirm_reset() view).
+        In development (EMAIL_BACKEND = console) the link appears in the terminal.
+        """
+        frontend_url     = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        set_password_url = f'{frontend_url}/set-password?token={welcome_token.token}'
+        expiry_mins      = _EXPIRY_MINUTES
+
+        subject = 'Welcome to CMS — Activate Your Account'
+        message = (
+            f'Hi {user.first_name or user.username},\n\n'
+            f'An account has been created for you on the College Management System.\n\n'
+            f'Your login username is: {user.username}\n\n'
+            f'Please click the link below to set your password and activate your account\n'
+            f'(this link expires in {expiry_mins} minutes):\n\n'
+            f'{set_password_url}\n\n'
+            f'If you were not expecting this email, please contact your college administrator.\n\n'
+            f'— The CMS Team'
+        )
+
+        try:
+            send_mail(
+                subject      = subject,
+                message      = message,
+                from_email   = settings.DEFAULT_FROM_EMAIL,
+                recipient_list = [user.email],
+                fail_silently  = False,
+            )
+        except Exception:
+            logger.exception(
+                'PasswordResetService: failed to send welcome email to user_id=%s', user.pk
             )

@@ -168,9 +168,7 @@ class UserViewSet(viewsets.GenericViewSet):
         """GET /api/v1/users/{id}/"""
         user = self._get_user_or_404(pk)
         return Response(UserListSerializer(user).data)
-
-    # ── CREATE ───────────────────────────────────────────────────────────────
-
+        
     def create(self, request):
         """
         POST /api/v1/users/
@@ -185,6 +183,7 @@ class UserViewSet(viewsets.GenericViewSet):
 
         from django.db import transaction
         from auth_core.models import UserProfile
+        from auth_core.services.password_reset_service import PasswordResetService
         from students.models import Student, Teacher
 
         with transaction.atomic():
@@ -221,6 +220,11 @@ class UserViewSet(viewsets.GenericViewSet):
                     year    = d['year'],
                     section = d['section'].strip(),
                 )
+
+        # Send welcome email OUTSIDE the transaction — a transient SMTP failure
+        # must never roll back the created account.  The admin can resend via the
+        # forgot-password flow if the email is lost.
+        PasswordResetService.send_welcome_email(user, request)
 
         return Response(
             UserListSerializer(user).data,
