@@ -3,6 +3,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 
 from auth_core.permissions import HasPermission, IsAdminRole
@@ -19,6 +20,7 @@ from .serializers import (
     StudentProfileSerializer,
     StudentWriteSerializer,
     TeacherSerializer,
+    TeacherWriteSerializer,
     LeaveRequestReadSerializer,
     LeaveRequestWriteSerializer,
 )
@@ -35,24 +37,30 @@ class StudentProfileViewSet(viewsets.ModelViewSet):
     PUT    /api/v1/students/profiles/{id}/      update  (admin only)
     PATCH  /api/v1/students/profiles/{id}/      partial (admin only)
     DELETE /api/v1/students/profiles/{id}/      destroy (admin only)
+
+    Search:  ?search=<query>    matches roll_no, course, user name, email
+    Order:   ?ordering=roll_no | year | user__username
     """
-    permission_classes = [HasPermission]
+    permission_classes  = [HasPermission]
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = [
+        'roll_no', 'course', 'section',
+        'user__username', 'user__first_name', 'user__last_name', 'user__email',
+    ]
+    ordering_fields     = ['roll_no', 'year', 'course', 'user__username']
+    ordering            = ['roll_no']
 
     @property
     def required_permission(self):
-        # Students (STUDENTS_VIEW_OWN) can read; admins (STUDENTS_MANAGE) can write.
-        # Write actions are further guarded by IsAdminRole() below.
         if self.action in _READ_ACTIONS:
             return PermissionCodes.STUDENTS_VIEW_OWN
         return PermissionCodes.STUDENTS_MANAGE
 
     def get_queryset(self):
         user = self.request.user
-        # Admins / teachers / accounts / receptionist — anyone with STUDENTS_VIEW_ALL
         if RBACService.has_permission(user, PermissionCodes.STUDENTS_VIEW_ALL) \
            or user.is_superuser:
             return Student.objects.select_related('user').all()
-        # Students see only their own profile
         return Student.objects.select_related('user').filter(user=user)
 
     def get_serializer_class(self):
@@ -66,16 +74,38 @@ class StudentProfileViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
 
-class TeacherViewSet(viewsets.ReadOnlyModelViewSet):
+class TeacherViewSet(viewsets.ModelViewSet):
     """
-    GET  /api/v1/students/teachers/         list    (student / teacher / admin)
-    GET  /api/v1/students/teachers/{id}/    detail  (student / teacher / admin)
+    GET    /api/v1/students/teachers/         list    (student / teacher / admin)
+    GET    /api/v1/students/teachers/{id}/    detail  (student / teacher / admin)
+    POST   /api/v1/students/teachers/         create  (admin only)
+    PUT    /api/v1/students/teachers/{id}/    update  (admin only)
+    PATCH  /api/v1/students/teachers/{id}/    partial (admin only)
+    DELETE /api/v1/students/teachers/{id}/    delete  (admin only)
+
+    Search:  ?search=<query>    matches department, user name, email
+    Order:   ?ordering=department | user__username
     """
     queryset            = Teacher.objects.select_related('user').all()
-    serializer_class    = TeacherSerializer
     permission_classes  = [HasPermission]
-    # STUDENTS_VIEW_OWN is the minimum permission — every authenticated student has it.
     required_permission = PermissionCodes.STUDENTS_VIEW_OWN
+    filter_backends     = [SearchFilter, OrderingFilter]
+    search_fields       = [
+        'department',
+        'user__username', 'user__first_name', 'user__last_name', 'user__email',
+    ]
+    ordering_fields     = ['department', 'user__username']
+    ordering            = ['user__username']
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return TeacherWriteSerializer
+        return TeacherSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [HasPermission()]
+        return [IsAdminRole()]
 
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):

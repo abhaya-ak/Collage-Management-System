@@ -73,6 +73,44 @@ class TeacherSerializer(serializers.ModelSerializer):
         return f"{obj.user.first_name} {obj.user.last_name}".strip()
 
 
+class TeacherWriteSerializer(serializers.ModelSerializer):
+    """
+    WRITE — admin creates or updates a Teacher profile row.
+    Accepts the user PK + department.
+    Returns the read shape on success via to_representation().
+    """
+    class Meta:
+        model  = Teacher
+        fields = ['id', 'user', 'department']
+        read_only_fields = ['id']
+
+    def validate_user(self, user):
+        from auth_core.services.rbac_service import RBACService
+        from users.constants import RoleNames
+
+        # Enforce role consistency — only users with the 'teacher' role
+        # should have a Teacher domain profile.
+        role = RBACService.get_role(user)
+        if role != RoleNames.TEACHER:
+            raise serializers.ValidationError(
+                f"User '{user.username}' has role '{role or 'none'}', not 'teacher'. "
+                f"Assign teacher role first via PATCH /api/v1/users/{user.pk}/role/ "
+                f"with body {{\"role\": \"teacher\"}}."
+            )
+
+        # Prevent duplicate Teacher profiles for the same user.
+        pk = self.instance.pk if self.instance else None
+        if Teacher.objects.filter(user=user).exclude(pk=pk).exists():
+            raise serializers.ValidationError(
+                f"A Teacher profile already exists for '{user.username}'."
+            )
+        return user
+
+    def to_representation(self, instance):
+        """Always return the read shape after create/update."""
+        return TeacherSerializer(instance, context=self.context).data
+
+
 class LeaveRequestReadSerializer(serializers.ModelSerializer):
     """
     READ — what students and admins see when listing leave requests.

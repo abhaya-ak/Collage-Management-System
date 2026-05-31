@@ -40,8 +40,14 @@ class UserListSerializer(serializers.ModelSerializer):
 
 class UserCreateSerializer(serializers.Serializer):
     """
-    Admin creates a new user and optionally assigns a role.
-    Uses Django's create_user() to hash the password correctly.
+    Admin creates a new user, assigns a role, and optionally creates the
+    domain profile in one atomic request.
+
+    Teacher fields (required when role='teacher'):
+      department  — e.g. "Computer Science"
+
+    Student fields (required when role='student'):
+      roll_no, course, year, section
     """
     username   = serializers.CharField(max_length=150)
     email      = serializers.EmailField()
@@ -51,6 +57,15 @@ class UserCreateSerializer(serializers.Serializer):
     last_name  = serializers.CharField(max_length=150, default='')
     role       = serializers.ChoiceField(choices=RoleNames.ALL, required=False,
                                          default=RoleNames.STUDENT)
+
+    # ── Teacher profile fields ───────────────────────────────────────────────
+    department = serializers.CharField(max_length=100, required=False, default='')
+
+    # ── Student profile fields ───────────────────────────────────────────────
+    roll_no = serializers.CharField(max_length=50,  required=False, default='')
+    course  = serializers.CharField(max_length=100, required=False, default='')
+    year    = serializers.IntegerField(required=False, default=1, min_value=1)
+    section = serializers.CharField(max_length=10,  required=False, default='')
 
     def validate_username(self, value):
         if User.objects.filter(username__iexact=value).exists():
@@ -69,6 +84,36 @@ class UserCreateSerializer(serializers.Serializer):
                 f"Role '{value}' does not exist. Run `python manage.py seed_roles` first."
             )
         return value
+
+    def validate(self, attrs):
+        """Cross-field validation: enforce required profile fields per role."""
+        role = attrs.get('role', RoleNames.STUDENT)
+
+        if role == RoleNames.TEACHER:
+            if not attrs.get('department', '').strip():
+                raise serializers.ValidationError(
+                    {'department': 'This field is required when role is "teacher".'}
+                )
+
+        if role == RoleNames.STUDENT:
+            errors = {}
+            if not attrs.get('roll_no', '').strip():
+                errors['roll_no'] = 'Required when role is "student".'
+            if not attrs.get('course', '').strip():
+                errors['course'] = 'Required when role is "student".'
+            if not attrs.get('section', '').strip():
+                errors['section'] = 'Required when role is "student".'
+            if errors:
+                raise serializers.ValidationError(errors)
+
+            # roll_no uniqueness check
+            from students.models import Student
+            if Student.objects.filter(roll_no=attrs['roll_no']).exists():
+                raise serializers.ValidationError(
+                    {'roll_no': f"Roll number '{attrs['roll_no']}' is already taken."}
+                )
+
+        return attrs
 
 
 class UserRoleChangeSerializer(serializers.Serializer):
@@ -127,14 +172,23 @@ class UserViewSet(viewsets.GenericViewSet):
     # ── CREATE ───────────────────────────────────────────────────────────────
 
     def create(self, request):
-        """POST /api/v1/users/ — admin creates a user and assigns a role."""
+        """
+        POST /api/v1/users/
+        Creates user + role + domain profile in one atomic transaction.
+        Teacher: pass 'department'.
+        Student: pass 'roll_no', 'course', 'year', 'section'.
+        """
         self._require_manage()
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
 
         from django.db import transaction
+        from auth_core.models import UserProfile
+        from students.models import Student, Teacher
+
         with transaction.atomic():
+            # 1. Create the auth user
             user = User.objects.create_user(
                 username   = d['username'],
                 email      = d['email'],
@@ -142,14 +196,37 @@ class UserViewSet(viewsets.GenericViewSet):
                 first_name = d.get('first_name', ''),
                 last_name  = d.get('last_name', ''),
             )
+
+            # 2. UserProfile (avatar, phone, bio)
+            UserProfile.objects.get_or_create(user=user)
+
+            # 3. Role assignment — signal fires here
             role_name = d.get('role', RoleNames.STUDENT)
             role      = Role.objects.get(name=role_name)
             UserRole.objects.create(user=user, role=role)
+
+            # 4. Domain profile — explicit creation overrides signal default
+            if role_name == RoleNames.TEACHER:
+                # Signal may have created with 'Unassigned'; update with real dept
+                Teacher.objects.update_or_create(
+                    user=user,
+                    defaults={'department': d['department'].strip()},
+                )
+
+            elif role_name == RoleNames.STUDENT:
+                Student.objects.create(
+                    user    = user,
+                    roll_no = d['roll_no'].strip(),
+                    course  = d['course'].strip(),
+                    year    = d['year'],
+                    section = d['section'].strip(),
+                )
 
         return Response(
             UserListSerializer(user).data,
             status=status.HTTP_201_CREATED,
         )
+
 
     # ── ROLE CHANGE ───────────────────────────────────────────────────────────
 
