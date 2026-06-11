@@ -1,0 +1,489 @@
+=========================================================
+COLLEGE MANAGEMENT SYSTEM (CMS)
+Project Blueprint & Functional Requirements
+=========================================================
+
+Project Name:
+College Management System (CMS)
+
+Project Type:
+Single College Management System
+
+Architecture:
+Backend: Django + Django REST Framework
+Database: PostgreSQL
+Authentication: JWT
+Authorization: RBAC (Role-Based Access Control)
+Frontend: React + TypeScript
+Storage: Local Storage / AWS S3 (Future)
+Deployment: Docker + Nginx + Gunicorn
+
+---------------------------------------------------------
+PROJECT OVERVIEW
+---------------------------------------------------------
+
+The College Management System (CMS) is a centralized platform
+designed to manage academic, administrative, examination,
+attendance, and financial operations of a college.
+
+The system aims to digitize and automate day-to-day activities
+performed by administrators, teachers, accountants, and students.
+
+The platform will provide separate portals for different users
+with role-based access and permissions.
+
+---------------------------------------------------------
+SYSTEM USERS
+---------------------------------------------------------
+
+1. Super Admin
+2. Admin
+3. Teacher / Faculty
+4. Accountant / Finance
+5. Student
+
+---------------------------------------------------------
+SYSTEM MODULES
+---------------------------------------------------------
+
+1. Accounts Management
+2. Academic Management
+3. Student Management
+4. Faculty Management
+5. Attendance Management
+6. Examination Management
+7. Fee & Finance Management
+8. Notification Management
+9. Reports & Analytics
+10. Audit & Activity Tracking
+
+=========================================================
+USER JOURNEYS
+=========================================================
+
+---------------------------------------------------------
+1. STUDENT JOURNEY
+---------------------------------------------------------
+
+Student Registration
+    ↓
+Admission Approval
+    ↓
+Fee Payment
+    ↓
+Student Account Creation
+    ↓
+Student Enrollment
+    ↓
+Class Participation
+    ↓
+Attendance Tracking
+    ↓
+Examinations
+    ↓
+Result Publication
+    ↓
+Semester Completion
+    ↓
+Next Semester Enrollment
+
+Student can:
+
+- Login to Portal
+- View Dashboard
+- View Profile
+- Download Student ID
+- View Attendance
+- View Results
+- View GPA / CGPA
+- View Fee Information
+- View Payment History
+- View Notifications
+- Access Academic Records
+
+---------------------------------------------------------
+2. TEACHER JOURNEY
+---------------------------------------------------------
+
+Faculty Profile Creation
+    ↓
+Subject Assignment
+    ↓
+Section Assignment
+    ↓
+Teacher Account Creation
+    ↓
+Class Management
+    ↓
+Attendance Marking
+    ↓
+Marks Entry
+    ↓
+Result Processing
+
+Teacher can:
+
+- Login to Portal
+- View Dashboard
+- View Assigned Subjects
+- View Assigned Sections
+- Take Attendance
+- Update Attendance
+- Enter Exam Marks
+- View Student Lists
+- Apply Leave
+- View Notifications
+
+---------------------------------------------------------
+3. ACCOUNTANT JOURNEY
+---------------------------------------------------------
+
+Fee Structure Setup
+    ↓
+Student Fee Assignment
+    ↓
+Fee Collection
+    ↓
+Receipt Generation
+    ↓
+Financial Reporting
+
+Accountant can:
+
+- Login to Portal
+- View Dashboard
+- Search Students
+- Collect Fees
+- Generate Receipts
+- View Payment History
+- Manage Fee Structures
+- View Due Reports
+- Generate Financial Reports
+
+---------------------------------------------------------
+4. ADMIN JOURNEY
+---------------------------------------------------------
+
+Academic Setup
+    ↓
+Program Creation
+    ↓
+Semester Creation
+    ↓
+Subject Creation
+    ↓
+Section Creation
+    ↓
+Faculty Assignment
+    ↓
+Student Admission
+    ↓
+Fee Configuration
+    ↓
+Attendance Monitoring
+    ↓
+Exam Management
+    ↓
+Result Publication
+    ↓
+Reporting & Analytics
+
+Admin can:
+
+- Manage Students
+- Manage Faculty
+- Manage Academic Structure
+- Manage Attendance
+- Manage Examinations
+- Publish Results
+- Configure Fees
+- Create Notifications
+- View Reports
+- Manage User Accounts
+
+=========================================================
+FEATURES
+=========================================================
+
+---------------------------------------------------------
+1. ACCOUNTS MANAGEMENT
+---------------------------------------------------------
+
+Authentication
+- Login
+- Logout
+- Forgot Password
+- Password Reset
+
+Authorization
+- Role-Based Access Control (RBAC)
+- Permission Management
+
+User Management
+- User Creation
+- User Activation/Deactivation
+
+Activity Tracking
+- Login History
+- Audit Logs
+
+---------------------------------------------------------
+2. STUDENT MANAGEMENT
+---------------------------------------------------------
+
+Admissions
+- Student Registration
+- Admission Approval
+- Student ID Generation
+
+Student Profile
+- Basic Information
+- Academic Information
+- Contact Information
+
+Enrollment
+- Academic Year Enrollment
+- Semester Enrollment
+- Section Assignment
+
+Student Documents
+- Passport Photo
+- SEE Certificate
+- +2 Certificate
+- Citizenship
+- Migration Certificate
+- Character Certificate
+
+Student Dashboard
+- Profile Summary
+- Attendance Summary
+- Academic Progress
+- GPA / CGPA
+- Fee Summary
+- Notifications
+
+---------------------------------------------------------
+3. ACADEMIC MANAGEMENT
+---------------------------------------------------------
+
+Academic Structure
+
+Academic Year
+Program
+Semester
+Subject
+Section
+
+Program Mapping
+
+Program
+    ↓
+Semester
+    ↓  
+Subjects
+
+Academic Control
+
+- Semester Management
+- Subject Management
+- Section Management
+- Academic Session Tracking
+
+---------------------------------------------------------
+4. FACULTY MANAGEMENT
+---------------------------------------------------------
+
+Faculty Profiles
+
+Faculty Information
+Qualifications
+Contact Details
+
+Faculty Assignment
+
+Subject Assignment
+Section Assignment
+
+Leave Management
+
+Leave Requests
+Approval Workflow
+
+---------------------------------------------------------
+5. ATTENDANCE MANAGEMENT
+---------------------------------------------------------
+
+Attendance Session
+
+Subject-wise Attendance
+Section-wise Attendance
+
+Attendance Records
+
+Present
+Absent
+Late
+Leave
+
+Attendance Analytics
+
+Student Attendance %
+Section Attendance %
+Defaulter Reports
+
+---------------------------------------------------------
+6. EXAMINATION MANAGEMENT
+---------------------------------------------------------
+
+Exam Setup
+
+Exam Creation
+Exam Scheduling
+
+Marks Management
+
+Marks Entry
+Marks Verification
+
+Grade Management
+
+Grade Scale
+Grade Calculation
+
+Results
+
+Result Publication
+Result History
+GPA Calculation
+CGPA Calculation
+
+---------------------------------------------------------
+7. FEE & FINANCE MANAGEMENT
+---------------------------------------------------------
+
+Fee Categories
+
+Admission Fee
+Semester Fee
+Exam Fee
+Library Fee
+
+Fee Structure
+
+Program-wise Fees
+Semester-wise Fees
+
+Student Fees
+
+Fee Assignment
+Discount Management
+Scholarship Management
+
+Payments
+
+Cash Payment
+eSewa
+Khalti
+Bank Transfer
+
+Receipts
+
+Receipt Generation
+Receipt Download
+
+Reports
+
+Collection Reports
+Due Reports
+
+---------------------------------------------------------
+8. NOTIFICATION MANAGEMENT
+---------------------------------------------------------
+
+Notice Creation
+
+Audience:
+- Students
+- Teachers
+- Accountants
+- Admins
+- All Users
+
+Delivery
+
+In-App Notifications
+Email Notifications (Future)
+SMS Notifications (Future)
+
+---------------------------------------------------------
+9. REPORTS & ANALYTICS
+---------------------------------------------------------
+
+Student Reports
+
+Attendance Reports
+Result Reports
+
+Faculty Reports
+
+Faculty Workload Reports
+
+Financial Reports
+
+Fee Collection Reports
+Outstanding Balance Reports
+
+Administrative Reports
+
+Total Students
+Total Faculty
+Academic Statistics
+
+---------------------------------------------------------
+10. AUDIT LOGS
+---------------------------------------------------------
+
+Track System Activities
+
+Attendance Updates
+Fee Modifications
+Result Publication
+User Actions
+
+=========================================================
+PHASE 1 MVP
+=========================================================
+
+Must Have:
+
+✓ Authentication & RBAC
+✓ Academic Management
+✓ Student Management
+✓ Faculty Management
+✓ Attendance Management
+✓ Examination Management
+✓ Fee Management
+✓ Notifications
+✓ Student Dashboard
+✓ Teacher Dashboard
+✓ Accountant Dashboard
+✓ Admin Dashboard
+
+=========================================================
+LONG TERM FEATURES (FUTURE)
+=========================================================
+
+- Library Management
+- Hostel Management
+- Transport Management
+- Mobile Application
+- Online Fee Payment Gateway
+- SMS Gateway
+- Parent Portal
+- Alumni Portal
+- Scholarship Portal
+- Multi-College SaaS Support
+
+=========================================================
+END OF DOCUMENT
+=========================================================

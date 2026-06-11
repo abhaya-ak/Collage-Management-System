@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Awake Nepal — Volunteer Registration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ============ PASTE YOUR GOOGLE APPS SCRIPT URL IN THE <script> AT THE BOTTOM ============ */
+
+  :root {
+    --primary: #d62828;          /* Awake Nepal red */
+    --primary-dark: #a4161a;
+    --primary-light: #fdeaea;
+    --accent: #003049;
+    --text: #1f2430;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f4f6fb;
+    --white: #ffffff;
+    --success: #16a34a;
+    --error: #dc2626;
+    --radius: 14px;
+    --shadow: 0 20px 50px rgba(16, 24, 40, .12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Poppins', sans-serif;
+    background:
+      radial-gradient(1200px 600px at 110% -10%, rgba(214, 40, 40, .14), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(0, 48, 73, .12), transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+    color: var(--text);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px 60px;
+  }
+
+  .wrapper { width: 100%; max-width: 760px; }
+
+  /* ---------- Header card ---------- */
+  .form-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 60%, var(--accent) 130%);
+    color: var(--white);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 36px 36px 30px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .form-header::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Ccircle cx='100' cy='20' r='60' fill='rgba(255,255,255,0.05)'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+  .form-header .badge {
+    display: inline-block;
+    background: rgba(255,255,255,.16);
+    border: 1px solid rgba(255,255,255,.3);
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .form-header h1 { font-size: 26px; font-weight: 700; line-height: 1.3; }
+  .form-header p  { margin-top: 8px; font-size: 14px; opacity: .92; font-weight: 300; max-width: 540px; }
+
+  /* ---------- Progress bar ---------- */
+  .progress-wrap {
+    background: var(--white);
+    padding: 26px 36px 8px;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+  .steps { display: flex; justify-content: space-between; position: relative; }
+  .steps::before {
+    content: "";
+    position: absolute;
+    top: 17px; left: 8%; right: 8%;
+    height: 3px;
+    background: var(--border);
+    z-index: 0;
+  }
+  .steps::after {
+    content: "";
+    position: absolute;
+    top: 17px; left: 8%;
+    height: 3px;
+    width: calc((100% - 16%) * var(--progress, 0));
+    background: var(--primary);
+    z-index: 1;
+    transition: width .45s cubic-bezier(.4, 0, .2, 1);
+  }
+  .step { position: relative; z-index: 2; text-align: center; flex: 1; }
+  .step .dot {
+    width: 36px; height: 36px;
+    margin: 0 auto;
+    border-radius: 50%;
+    background: var(--white);
+    border: 3px solid var(--border);
+    color: var(--muted);
+    font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .35s ease;
+  }
+  .step .label {
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--muted);
+    font-weight: 500;
+    transition: color .3s;
+  }
+  .step.active .dot {
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: 0 0 0 6px var(--primary-light);
+    transform: scale(1.06);
+  }
+  .step.active .label { color: var(--primary); font-weight: 600; }
+  .step.done .dot {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--white);
+  }
+  .step.done .label { color: var(--text); }
+
+  /* ---------- Form body ---------- */
+  form {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 30px 36px 36px;
+    box-shadow: var(--shadow);
+  }
+
+  .pane { display: none; animation: fadeSlide .4s ease; }
+  .pane.active { display: block; }
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .pane h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+    padding-bottom: 12px;
+    margin-bottom: 22px;
+    border-bottom: 2px solid var(--primary-light);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .pane h2 .icon {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: var(--primary-light);
+    color: var(--primary);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 20px; }
+  .field.full { grid-column: 1 / -1; }
+  .field { display: flex; flex-direction: column; }
+
+  label.f-label {
+    font-size: 13.5px;
+    font-weight: 500;
+    margin-bottom: 7px;
+    color: var(--text);
+  }
+  .req { color: var(--primary); margin-left: 2px; }
+  .optional { color: var(--muted); font-weight: 400; font-size: 12px; }
+
+  input[type="text"], input[type="tel"], input[type="email"],
+  input[type="number"], select, textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text);
+    background: #fafbfc;
+    transition: border-color .25s, box-shadow .25s, background .25s;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--primary);
+    background: var(--white);
+    box-shadow: 0 0 0 4px var(--primary-light);
+  }
+  textarea { resize: vertical; min-height: 92px; }
+
+  /* ---------- Choice cards (radio / checkbox) ---------- */
+  .choices { display: grid; gap: 10px; }
+  .choices.cols-2 { grid-template-columns: 1fr 1fr; }
+  .choice {
+    position: relative;
+    display: flex; align-items: center; gap: 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 13px 15px;
+    cursor: pointer;
+    background: #fafbfc;
+    transition: all .22s ease;
+    font-size: 14px;
+    user-select: none;
+  }
+  .choice:hover { border-color: #cbd0d8; transform: translateY(-1px); }
+  .choice input { position: absolute; opacity: 0; pointer-events: none; }
+  .choice .mark {
+    width: 20px; height: 20px;
+    flex: 0 0 20px;
+    border: 2px solid #c4c9d2;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all .2s;
+    background: var(--white);
+  }
+  .choice .mark.square { border-radius: 6px; }
+  .choice .mark::after {
+    content: "";
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--white);
+    transform: scale(0);
+    transition: transform .18s ease;
+  }
+  .choice .mark.square::after {
+    border-radius: 2px;
+    width: 5px; height: 9px;
+    background: transparent;
+    border: solid var(--white);
+    border-width: 0 2.5px 2.5px 0;
+    transform: rotate(45deg) scale(0);
+    margin-top: -3px;
+  }
+  .choice input:checked ~ .mark {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+  .choice input:checked ~ .mark::after { transform: scale(1); }
+  .choice input:checked ~ .mark.square::after { transform: rotate(45deg) scale(1); }
+  .choice input:checked ~ .txt { font-weight: 500; }
+  .choice:has(input:checked) {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    box-shadow: 0 2px 10px rgba(214, 40, 40, .12);
+  }
+
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .err-msg { font-size: 12.5px; color: var(--error); margin-top: 6px; display: none; }
+  .field.invalid .err-msg { display: block; }
+  .field.invalid input, .field.invalid select, .field.invalid textarea { border-color: var(--error); }
+  .field.invalid .choices .choice { border-color: #f3c1c1; }
+
+  /* conditional explain box */
+  .explain { margin-top: 12px; display: none; }
+  .explain.show { display: block; animation: fadeSlide .3s ease; }
+
+  /* ---------- Declaration ---------- */
+  .declaration {
+    background: linear-gradient(135deg, #fff7f7, #fdf2f2);
+    border: 1.5px dashed var(--primary);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .declaration .choice { background: var(--white); }
+
+  .review-box {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 22px;
+    font-size: 13.5px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .review-box h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 10px 0 6px; }
+  .review-box h3:first-child { margin-top: 0; }
+  .review-box .row { display: flex; gap: 8px; padding: 3px 0; }
+  .review-box .k { color: var(--muted); min-width: 180px; flex-shrink: 0; }
+  .review-box .v { font-weight: 500; word-break: break-word; }
+
+  /* ---------- Buttons ---------- */
+  .nav-btns {
+    display: flex; justify-content: space-between; gap: 14px;
+    margin-top: 30px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border);
+  }
+  button {
+    font: inherit;
+    font-size: 15px; font-weight: 600;
+    padding: 13px 30px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    transition: all .22s ease;
+  }
+  .btn-next, .btn-submit {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: var(--white);
+    box-shadow: 0 8px 20px rgba(214, 40, 40, .3);
+    margin-left: auto;
+  }
+  .btn-next:hover, .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(214, 40, 40, .38); }
+  .btn-back {
+    background: var(--white);
+    color: var(--text);
+    border: 1.5px solid var(--border);
+  }
+  .btn-back:hover { border-color: var(--muted); }
+  .btn-submit:disabled { opacity: .65; cursor: not-allowed; transform: none; }
+
+  /* ---------- Success screen ---------- */
+  .success {
+    display: none;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 60px 40px;
+    text-align: center;
+    animation: fadeSlide .5s ease;
+  }
+  .success .check {
+    width: 86px; height: 86px;
+    margin: 0 auto 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #22c55e, #15803d);
+    color: var(--white);
+    font-size: 40px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 14px 34px rgba(34, 197, 94, .35);
+  }
+  .success h2 { font-size: 24px; color: var(--accent); margin-bottom: 10px; }
+  .success p { color: var(--muted); font-size: 14.5px; max-width: 420px; margin: 0 auto; }
+
+  footer { text-align: center; margin-top: 26px; font-size: 12.5px; color: var(--muted); }
+  footer span { color: var(--primary); }
+
+  @media (max-width: 620px) {
+    .grid, .choices.cols-2 { grid-template-columns: 1fr; }
+    .form-header, .progress-wrap, form { padding-left: 20px; padding-right: 20px; }
+    .step .label { display: none; }
+    .review-box .row { flex-direction: column; gap: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+
+  <!-- Header -->
+  <div class="form-header">
+    <span class="badge">Volunteer Recruitment 2026</span>
+    <h1>Awake Nepal — Volunteer Registration</h1>
+    <p>Join our team in Chitwan and help us create real impact. Fill out the form below — it only takes a few minutes.</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="steps" id="stepsBar" style="--progress:0">
+      <div class="step active" data-step="0"><div class="dot">1</div><div class="label">Personal</div></div>
+      <div class="step" data-step="1"><div class="dot">2</div><div class="label">Education</div></div>
+      <div class="step" data-step="2"><div class="dot">3</div><div class="label">Volunteering</div></div>
+      <div class="step" data-step="3"><div class="dot">4</div><div class="label">Declaration</div></div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <form id="volunteerForm" novalidate>
+
+    <!-- ============ STEP 1 : PERSONAL ============ -->
+    <div class="pane active" data-pane="0">
+      <h2><span class="icon">👤</span> Personal Information</h2>
+      <div class="grid">
+        <div class="field full">
+          <label class="f-label" for="fullName">Full Name <span class="req">*</span></label>
+          <input type="text" id="fullName" name="fullName" placeholder="e.g. Sita Sharma" required>
+          <div class="err-msg">Please enter your full name.</div>
+        </div>
+        <div class="field">
+          <label class="f-label" for="phone">Phone Number <span class="req">*</span></label>
+          <input type="tel" id="phone" name="phone" placeholder="98XXXXXXXX" required pattern="^[0-9+\-\s]{7,15}$">
+          <div class="err-msg">Please enter a valid phone number.</div>
+        </div>
+        <div class="field">
+          <label class="f-label" for="email">Email Address <span class="optional">(Optional)</span></label>
+          <input type="email" id="email" name="email" placeholder="you@example.com">
+          <div class="err-msg">Please enter a valid email address.</div>
+        </div>
+        <div class="field">
+          <label class="f-label" for="age">Age <span class="req">*</span></label>
+          <input type="number" id="age" name="age" min="13" max="80" placeholder="e.g. 19" required>
+          <div class="err-msg">Please enter your age (13–80).</div>
+        </div>
+        <div class="field">
+          <label class="f-label" for="gender">Gender <span class="optional">(Optional)</span></label>
+          <select id="gender" name="gender">
+            <option value="">Prefer not to say</option>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label class="f-label" for="district">Current District &amp; Province <span class="req">*</span></label>
+          <input type="text" id="district" name="district" placeholder="e.g. Chitwan, Bagmati Province" required>
+          <div class="err-msg">Please enter your district and province.</div>
+        </div>
+      </div>
+      <div class="nav-btns">
+        <button type="button" class="btn-next" onclick="nextStep()">Next →</button>
+      </div>
+    </div>
+
+    <!-- ============ STEP 2 : EDUCATION ============ -->
+    <div class="pane" data-pane="1">
+      <h2><span class="icon">🎓</span> Educational Information</h2>
+      <div class="field full" id="eduField">
+        <label class="f-label">Current Education Level <span class="req">*</span></label>
+        <div class="choices cols-2">
+          <label class="choice"><input type="radio" name="education" value="SEE" required><span class="mark"></span><span class="txt">SEE</span></label>
+          <label class="choice"><input type="radio" name="education" value="+2"><span class="mark"></span><span class="txt">+2</span></label>
+          <label class="choice"><input type="radio" name="education" value="Bachelor's"><span class="mark"></span><span class="txt">Bachelor's</span></label>
+          <label class="choice"><input type="radio" name="education" value="Other"><span class="mark"></span><span class="txt">Other</span></label>
+        </div>
+        <div class="err-msg">Please select your education level.</div>
+      </div>
+      <div class="nav-btns">
+        <button type="button" class="btn-back" onclick="prevStep()">← Back</button>
+        <button type="button" class="btn-next" onclick="nextStep()">Next →</button>
+      </div>
+    </div>
+
+    <!-- ============ STEP 3 : VOLUNTEER INFO ============ -->
+    <div class="pane" data-pane="2">
+      <h2><span class="icon">🤝</span> Volunteer Information</h2>
+
+      <div class="field full" id="areasField" style="margin-bottom:20px">
+        <label class="f-label">Which area would you like to volunteer in? <span class="req">*</span></label>
+        <div class="hint" style="margin:0 0 8px">You can select more than one.</div>
+        <div class="choices cols-2">
+          <label class="choice"><input type="checkbox" name="areas" value="Event Management"><span class="mark square"></span><span class="txt">Event Management</span></label>
+          <label class="choice"><input type="checkbox" name="areas" value="Student Management"><span class="mark square"></span><span class="txt">Student Management</span></label>
+          <label class="choice"><input type="checkbox" name="areas" value="Public Speaking & Hosting"><span class="mark square"></span><span class="txt">Public Speaking &amp; Hosting</span></label>
+          <label class="choice"><input type="checkbox" name="areas" value="Registration & Help Desk"><span class="mark square"></span><span class="txt">Registration &amp; Help Desk</span></label>
+          <label class="choice"><input type="checkbox" name="areas" value="Interview Coordination"><span class="mark square"></span><span class="txt">Interview Coordination</span></label>
+          <label class="choice"><input type="checkbox" name="areas" value="Photography & Documentation"><span class="mark square"></span><span class="txt">Photography &amp; Documentation</span></label>
+          <label class="choice"><input type="checkbox" name="areas" value="Social Media & Promotion"><span class="mark square"></span><span class="txt">Social Media &amp; Promotion</span></label>
+        </div>
+        <div class="err-msg">Please select at least one area.</div>
+      </div>
+
+      <div class="field full" style="margin-bottom:20px">
+        <label class="f-label" for="whyJoin">Why do you want to join Awake Nepal as a volunteer? <span class="req">*</span></label>
+        <textarea id="whyJoin" name="whyJoin" placeholder="Write a short answer..." required></textarea>
+        <div class="err-msg">Please tell us why you want to join.</div>
+      </div>
+
+      <div class="field full" id="expField" style="margin-bottom:20px">
+        <label class="f-label">Do you have any previous volunteering or leadership experience? <span class="req">*</span></label>
+        <div class="choices cols-2">
+          <label class="choice"><input type="radio" name="experience" value="Yes" required onchange="toggleExplain(true)"><span class="mark"></span><span class="txt">Yes</span></label>
+          <label class="choice"><input type="radio" name="experience" value="No" onchange="toggleExplain(false)"><span class="mark"></span><span class="txt">No</span></label>
+        </div>
+        <div class="err-msg">Please select Yes or No.</div>
+        <div class="explain" id="expExplain">
+          <textarea name="experienceDetail" id="experienceDetail" placeholder="Please explain your experience..."></textarea>
+        </div>
+      </div>
+
+      <div class="field full" id="availField" style="margin-bottom:20px">
+        <label class="f-label">Are you available to work in Chitwan for approximately one week? <span class="req">*</span></label>
+        <div class="choices cols-2">
+          <label class="choice"><input type="radio" name="availableWeek" value="Yes" required><span class="mark"></span><span class="txt">Yes</span></label>
+          <label class="choice"><input type="radio" name="availableWeek" value="No"><span class="mark"></span><span class="txt">No</span></label>
+        </div>
+        <div class="err-msg">Please select Yes or No.</div>
+      </div>
+
+      <div class="field full" id="travelField" style="margin-bottom:20px">
+        <label class="f-label">Can you travel to Chitwan if travel and accommodation are provided by Awake Nepal? <span class="req">*</span></label>
+        <div class="choices cols-2">
+          <label class="choice"><input type="radio" name="canTravel" value="Yes" required><span class="mark"></span><span class="txt">Yes</span></label>
+          <label class="choice"><input type="radio" name="canTravel" value="No"><span class="mark"></span><span class="txt">No</span></label>
+        </div>
+        <div class="err-msg">Please select Yes or No.</div>
+      </div>
+
+      <div class="field full" style="margin-bottom:20px">
+        <label class="f-label" for="skills">What skills do you have that can help our team? <span class="req">*</span></label>
+        <input type="text" id="skills" name="skills" placeholder="Communication, Leadership, Photography, Event Management..." required>
+        <div class="err-msg">Please list at least one skill.</div>
+      </div>
+
+      <div class="field full" id="participatedField" style="margin-bottom:20px">
+        <label class="f-label">Have you ever participated in any Awake Nepal program before? <span class="req">*</span></label>
+        <div class="choices cols-2">
+          <label class="choice"><input type="radio" name="participatedBefore" value="Yes" required><span class="mark"></span><span class="txt">Yes</span></label>
+          <label class="choice"><input type="radio" name="participatedBefore" value="No"><span class="mark"></span><span class="txt">No</span></label>
+        </div>
+        <div class="err-msg">Please select Yes or No.</div>
+      </div>
+
+      <div class="field full">
+        <label class="f-label" for="anythingElse">Anything else you would like us to know? <span class="optional">(Optional)</span></label>
+        <textarea id="anythingElse" name="anythingElse" placeholder="Your message..."></textarea>
+      </div>
+
+      <div class="nav-btns">
+        <button type="button" class="btn-back" onclick="prevStep()">← Back</button>
+        <button type="button" class="btn-next" onclick="nextStep()">Next →</button>
+      </div>
+    </div>
+
+    <!-- ============ STEP 4 : DECLARATION ============ -->
+    <div class="pane" data-pane="3">
+      <h2><span class="icon">✅</span> Review &amp; Final Declaration</h2>
+
+      <div class="review-box" id="reviewBox"></div>
+
+      <div class="field full declaration" id="declField">
+        <label class="choice">
+          <input type="checkbox" id="declaration" name="declaration" value="Confirmed" required>
+          <span class="mark square"></span>
+          <span class="txt">I confirm that the information provided is correct and I am willing to work as a volunteer if selected.</span>
+        </label>
+        <div class="err-msg">You must confirm the declaration before submitting.</div>
+      </div>
+
+      <div class="nav-btns">
+        <button type="button" class="btn-back" onclick="prevStep()">← Back</button>
+        <button type="submit" class="btn-submit" id="submitBtn">Submit Application 🚀</button>
+      </div>
+    </div>
+  </form>
+
+  <!-- Success -->
+  <div class="success" id="successScreen">
+    <div class="check">✓</div>
+    <h2>Application Submitted!</h2>
+    <p>Thank you for applying to volunteer with <strong>Awake Nepal</strong>. Our team will review your application and contact you soon. 🇳🇵</p>
+  </div>
+
+  <footer>Made with <span>❤</span> by Awake Nepal · Volunteer Program</footer>
+</div>
+
+<script>
+/* =================================================================
+   CONFIG — paste your Google Apps Script Web App URL between quotes
+   ================================================================= */
+const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+
+let current = 0;
+const panes = document.querySelectorAll('.pane');
+const steps = document.querySelectorAll('.step');
+const stepsBar = document.getElementById('stepsBar');
+const form = document.getElementById('volunteerForm');
+
+function showStep(i) {
+  panes.forEach(p => p.classList.remove('active'));
+  panes[i].classList.add('active');
+  steps.forEach((s, idx) => {
+    s.classList.toggle('active', idx === i);
+    s.classList.toggle('done', idx < i);
+    if (idx < i) s.querySelector('.dot').textContent = '✓';
+    else s.querySelector('.dot').textContent = idx + 1;
+  });
+  stepsBar.style.setProperty('--progress', i / (panes.length - 1));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function markInvalid(el, bad) {
+  const field = el.closest('.field');
+  if (field) field.classList.toggle('invalid', bad);
+}
+
+function validatePane(i) {
+  const pane = panes[i];
+  let ok = true;
+
+  // text / email / number / select / textarea
+  pane.querySelectorAll('input[required]:not([type=radio]):not([type=checkbox]), textarea[required], select[required]').forEach(el => {
+    const bad = !el.checkValidity();
+    markInvalid(el, bad);
+    if (bad) ok = false;
+  });
+
+  // optional email format check
+  const email = pane.querySelector('#email');
+  if (email && email.value && !email.checkValidity()) { markInvalid(email, true); ok = false; }
+
+  // radio groups
+  const radioNames = new Set([...pane.querySelectorAll('input[type=radio][required]')].map(r => r.name));
+  radioNames.forEach(name => {
+    const checked = pane.querySelector(`input[name="${name}"]:checked`);
+    markInvalid(pane.querySelector(`input[name="${name}"]`), !checked);
+    if (!checked) ok = false;
+  });
+
+  // areas checkboxes — at least one
+  if (pane.querySelector('input[name=areas]')) {
+    const any = pane.querySelectorAll('input[name=areas]:checked').length > 0;
+    document.getElementById('areasField').classList.toggle('invalid', !any);
+    if (!any) ok = false;
+  }
+
+  // declaration checkbox
+  const decl = pane.querySelector('#declaration');
+  if (decl) {
+    document.getElementById('declField').classList.toggle('invalid', !decl.checked);
+    if (!decl.checked) ok = false;
+  }
+
+  if (!ok) {
+    const firstBad = pane.querySelector('.field.invalid');
+    if (firstBad) firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  return ok;
+}
+
+function nextStep() {
+  if (!validatePane(current)) return;
+  if (current < panes.length - 1) {
+    current++;
+    if (current === panes.length - 1) buildReview();
+    showStep(current);
+  }
+}
+function prevStep() {
+  if (current > 0) { current--; showStep(current); }
+}
+
+function toggleExplain(show) {
+  document.getElementById('expExplain').classList.toggle('show', show);
+}
+
+// live-clear errors on input
+form.addEventListener('input', e => markInvalid(e.target, false));
+form.addEventListener('change', e => {
+  const f = e.target.closest('.field');
+  if (f) f.classList.remove('invalid');
+});
+
+function getData() {
+  const fd = new FormData(form);
+  const areas = fd.getAll('areas').join(', ');
+  return {
+    fullName: fd.get('fullName') || '',
+    phone: fd.get('phone') || '',
+    email: fd.get('email') || '',
+    age: fd.get('age') || '',
+    gender: fd.get('gender') || '',
+    district: fd.get('district') || '',
+    education: fd.get('education') || '',
+    areas: areas,
+    whyJoin: fd.get('whyJoin') || '',
+    experience: fd.get('experience') || '',
+    experienceDetail: fd.get('experienceDetail') || '',
+    availableWeek: fd.get('availableWeek') || '',
+    canTravel: fd.get('canTravel') || '',
+    skills: fd.get('skills') || '',
+    participatedBefore: fd.get('participatedBefore') || '',
+    anythingElse: fd.get('anythingElse') || '',
+    declaration: fd.get('declaration') ? 'Yes' : 'No'
+  };
+}
+
+function buildReview() {
+  const d = getData();
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const row = (k, v) => v ? `<div class="row"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>` : '';
+  document.getElementById('reviewBox').innerHTML = `
+    <h3>Personal</h3>
+    ${row('Full Name', d.fullName)}
+    ${row('Phone', d.phone)}
+    ${row('Email', d.email)}
+    ${row('Age', d.age)}
+    ${row('Gender', d.gender)}
+    ${row('District & Province', d.district)}
+    <h3>Education</h3>
+    ${row('Education Level', d.education)}
+    <h3>Volunteering</h3>
+    ${row('Areas', d.areas)}
+    ${row('Why join', d.whyJoin)}
+    ${row('Experience', d.experience + (d.experienceDetail ? ' — ' + d.experienceDetail : ''))}
+    ${row('Available 1 week in Chitwan', d.availableWeek)}
+    ${row('Can travel to Chitwan', d.canTravel)}
+    ${row('Skills', d.skills)}
+    ${row('Participated before', d.participatedBefore)}
+    ${row('Anything else', d.anythingElse)}
+  `;
+}
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!validatePane(current)) return;
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  const data = getData();
+
+  try {
+    if (SCRIPT_URL.startsWith('http')) {
+      await fetch(SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(data)
+      });
+    } else {
+      console.warn('SCRIPT_URL not set — data not sent:', data);
+    }
+    form.style.display = 'none';
+    document.getElementById('progressWrap').style.display = 'none';
+    document.querySelector('.form-header').style.borderRadius = 'var(--radius)';
+    document.getElementById('successScreen').style.display = 'block';
+  } catch (err) {
+    alert('Something went wrong while submitting. Please check your internet connection and try again.');
+    btn.disabled = false;
+    btn.textContent = 'Submit Application 🚀';
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+cms-backend/
+│
+├── config/                          # Django project settings
+│   ├── __init__.py
+│   ├── settings/
+│   │   ├── base.py                  # shared settings
+│   │   ├── dev.py                   # development settings
+│   │   ├── prod.py                  # production settings
+│   │   └── __init__.py
+│   ├── urls.py
+│   ├── asgi.py
+│   └── wsgi.py
+│
+├── apps/                            # ALL BUSINESS LOGIC APPS
+│
+│   ├── core/                        # system foundation
+│   │   ├── models.py               # BaseModel, mixins
+│   │   ├── utils.py
+│   │   ├── enums.py
+│   │   ├── exceptions.py
+│   │   └── services.py
+│
+│   ├── accounts/                   # authentication + RBAC
+│   │   ├── models.py               # User, Role, Permission
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   ├── urls.py
+│   │   ├── permissions.py
+│   │   ├── services.py
+│   │   └── admin.py
+│
+│   ├── academics/                  # structure layer
+│   │   ├── models.py              # Program, Semester, Subject
+│   │   ├── services.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   └── urls.py
+│
+│   ├── students/                  # student domain
+│   │   ├── models.py
+│   │   ├── services.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   ├── urls.py
+│   │   └── selectors.py          # optimized queries (IMPORTANT)
+│
+│   ├── faculty/                   # faculty domain
+│   │   ├── models.py
+│   │   ├── services.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   └── urls.py
+│
+│   ├── attendance/
+│   │   ├── models.py
+│   │   ├── services.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   └── urls.py
+│
+│   ├── exams/
+│   │   ├── models.py
+│   │   ├── services.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   └── urls.py
+│
+│   ├── fees/
+│   │   ├── models.py
+│   │   ├── services.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   └── urls.py
+│
+│   ├── notifications/
+│   │   ├── models.py
+│   │   ├── services.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   └── urls.py
+│
+│   └── reports/                  # analytics layer
+│       ├── services.py
+│       ├── views.py
+│       └── selectors.py
+│
+│
+├── shared/                         # reusable cross-app logic
+│   ├── permissions.py
+│   ├── pagination.py
+│   ├── responses.py               # standard API response format
+│   ├── middleware.py
+│   └── decorators.py
+│
+├── docs/                           # architecture documentation
+│   ├── CLAUDE_CONTEXT.md
+│   ├── DATABASE_DESIGN.md
+│   ├── API_SPECIFICATION.md
+│   ├── PERMISSION_MATRIX.md
+│   └── DEVELOPMENT_PLAN.md
+│
+├── media/                          # uploaded files
+├── static/                         # static files
+│
+├── requirements.txt
+├── manage.py
+├── .env
+├── .env.example
+├── .gitignore
+└── README.md

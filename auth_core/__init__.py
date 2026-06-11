@@ -1,1 +1,0 @@
-# auth_core app
