@@ -1,0 +1,19 @@
+# Core
+Django>=5.0,<7.0
+djangorestframework>=3.15
+djangorestframework-simplejwt>=5.3
+django-filter>=24.0
+django-cors-headers>=4.4
+drf-spectacular>=0.28
+
+# Database
+psycopg[binary]>=3.2
+
+# Environment
+python-decouple>=3.8
+
+# Media
+Pillow>=11.0
+
+# Password hashing (Argon2 — fast, memory-hard)
+argon2-cffi>=23.1
