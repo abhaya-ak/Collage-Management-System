@@ -1,0 +1,33 @@
+SUPER_ADMIN
+    │
+    ├── Create Admin
+    ├── Disable Admin
+    ├── Reset Admin Password
+    ├── Assign Roles
+    └── View Everything
+
+ADMIN
+    │
+    ├── Manage Students
+    ├── Manage Faculty
+    ├── Manage Attendance
+    ├── Manage Exams
+    ├── Manage Results
+    └── Manage Daily Operations
+
+TEACHER
+    │
+    ├── Mark Attendance
+    ├── Enter Marks
+    └── View Assigned Classes
+
+ACCOUNTANT
+    │
+    ├── Manage Fees
+    └── View Financial Reports
+
+STUDENT
+    │
+    ├── View Attendance
+    ├── View Results
+    └── View Fee Status
