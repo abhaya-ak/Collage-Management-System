@@ -123,3 +123,80 @@ class PayFeeSerializer(serializers.Serializer):
     payment_method = serializers.ChoiceField(choices=PaymentMethod.choices)
     reference_number = serializers.CharField(required=False, allow_blank=True, default="")
     remarks = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+# ---------------------------------------------------------------------------
+# Accountant-specific serializers
+# ---------------------------------------------------------------------------
+
+class AccountantStudentFeeSerializer(serializers.ModelSerializer):
+    """Compact read-only fee record used at the accountant's cash counter."""
+
+    student_id = serializers.CharField(source="student.student_id", read_only=True)
+    student_name = serializers.SerializerMethodField()
+    program_name = serializers.CharField(source="program.name", read_only=True)
+    semester_number = serializers.IntegerField(source="semester.number", read_only=True)
+    academic_year_label = serializers.CharField(source="academic_year.label", read_only=True)
+    payable_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True
+    )
+
+    class Meta:
+        model = StudentFee
+        fields = [
+            "id", "student_id", "student_name",
+            "program_name", "semester_number", "academic_year_label",
+            "total_amount", "discount_amount", "scholarship_amount",
+            "payable_amount", "paid_amount", "due_amount",
+            "status", "due_date",
+        ]
+        read_only_fields = fields
+
+    def get_student_name(self, obj):
+        return obj.student.user.get_full_name() or obj.student.user.email
+
+
+class DailyCollectionEntrySerializer(serializers.ModelSerializer):
+    """Single payment line for the daily collection report."""
+
+    student_id = serializers.CharField(
+        source="student_fee.student.student_id", read_only=True
+    )
+    student_name = serializers.SerializerMethodField()
+    receipt_number = serializers.SerializerMethodField()
+    collected_by = serializers.CharField(source="paid_by.email", read_only=True, default=None)
+
+    class Meta:
+        model = Payment
+        fields = [
+            "id", "student_id", "student_name",
+            "amount", "payment_method", "reference_number",
+            "remarks", "collected_by", "paid_at", "receipt_number",
+        ]
+        read_only_fields = fields
+
+    def get_student_name(self, obj):
+        user = obj.student_fee.student.user
+        return user.get_full_name() or user.email
+
+    def get_receipt_number(self, obj):
+        try:
+            return obj.receipt.receipt_number
+        except Exception:
+            return None
+
+
+class CollectionReportQuerySerializer(serializers.Serializer):
+    """Query-param validator for date-ranged accountant reports."""
+
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+
+    def validate(self, data):
+        date_from = data.get("date_from")
+        date_to = data.get("date_to")
+        if date_from and date_to and date_from > date_to:
+            raise serializers.ValidationError(
+                {"date_to": "date_to must be on or after date_from."}
+            )
+        return data

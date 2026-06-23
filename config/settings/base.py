@@ -105,7 +105,7 @@ ASGI_APPLICATION = 'config.asgi.application'
 # =============================================================
 # DATABASE — PostgreSQL
 # =============================================================
-DATABASES = {
+'''DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': config('DB_NAME', default='cms_db'),
@@ -117,6 +117,13 @@ DATABASES = {
             'connect_timeout': 5,
         },
     }
+}'''
+
+import dj_database_url
+from decouple import config
+
+DATABASES = {
+    "default": dj_database_url.parse(config("DATABASE_URL"))
 }
 
 # =============================================================

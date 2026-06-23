@@ -1,21 +1,34 @@
 """
 Fees API — thin viewsets. Money mutations route through fees.services.
 
-    /api/fees/structures/                 FeeStructure CRUD
-    /api/fees/                            StudentFee list/detail
-    POST /api/fees/generate/              generate_student_fee
-    POST /api/fees/{id}/apply-discount/   apply_discount
-    POST /api/fees/{id}/apply-scholarship/ apply_scholarship
-    GET  /api/fees/dashboard/             finance stats
-    /api/fees/payments/                   payment history
-    POST /api/fees/payments/pay/          pay_fee
+    /api/fees/structures/                  FeeStructure CRUD
+    /api/fees/student-fees/                StudentFee list/detail
+    POST /api/fees/student-fees/generate/  generate_student_fee
+    POST /api/fees/student-fees/{id}/apply-discount/
+    POST /api/fees/student-fees/{id}/apply-scholarship/
+    GET  /api/fees/student-fees/dashboard/ finance stats
+    /api/fees/payments/                    payment history
+    POST /api/fees/payments/pay/           pay_fee
+
+Accountant-role endpoints (all under /api/fees/accountant/):
+    GET  /api/fees/accountant/student-fees/       searchable fee list (cash counter)
+    GET  /api/fees/accountant/student-fees/{id}/  detail with payment history
+    POST /api/fees/accountant/collect/            collect a payment (pay_fee)
+    POST /api/fees/accountant/refund/{id}/        refund a payment
+    GET  /api/fees/accountant/receipts/           receipts for a student or fee
+    GET  /api/fees/accountant/daily-report/       date-ranged collection report
+    GET  /api/fees/accountant/dashboard/          financial snapshot
 """
 
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 
+from apps.accounts.permissions import HasPermission
 from apps.fees import selectors, serializers, services
-from apps.fees.models import Receipt
+from apps.fees.models import Payment, Receipt
 from apps.fees.permissions import (
     FEE_STRUCTURE_PERMISSIONS,
     PAYMENT_PERMISSIONS,
@@ -23,7 +36,7 @@ from apps.fees.permissions import (
     STUDENT_FEE_PERMISSIONS,
 )
 from apps.students.models import Student
-from shared.responses import success_response
+from shared.responses import error_response, success_response
 from shared.viewsets import BaseRBACViewSet
 
 
@@ -162,3 +175,211 @@ class ReceiptViewSet(BaseRBACViewSet):
         if student:
             return qs.filter(payment__student_fee__student=student)
         return qs.none()
+
+
+# =============================================================
+# Accountant role — dedicated views
+# =============================================================
+
+class AccountantStudentFeeListView(APIView):
+    """
+    GET /api/fees/accountant/student-fees/
+
+    Searchable, filterable list of student fees for the cash-collection counter.
+
+    Query params:
+        search          — student ID or name fragment
+        status          — PENDING | PARTIAL | OVERDUE | PAID | CANCELLED
+        program         — program UUID
+        academic_year   — academic year UUID
+        semester        — semester UUID
+    """
+
+    permission_classes = [IsAuthenticated, HasPermission("view_student_fee")]
+
+    def get(self, request):
+        qs = selectors.accountant_student_fee_list(
+            search=request.query_params.get("search"),
+            status=request.query_params.get("status"),
+            program=request.query_params.get("program"),
+            academic_year=request.query_params.get("academic_year"),
+            semester=request.query_params.get("semester"),
+        )
+        ser = serializers.AccountantStudentFeeSerializer(qs, many=True)
+        return success_response(ser.data, f"{qs.count()} record(s) found.")
+
+
+class AccountantStudentFeeDetailView(APIView):
+    """
+    GET /api/fees/accountant/student-fees/<pk>/
+
+    Full fee record including all payment + receipt history for a student.
+    """
+
+    permission_classes = [IsAuthenticated, HasPermission("view_student_fee")]
+
+    def get(self, request, pk):
+        try:
+            fee = selectors.student_fee_detail().get(pk=pk)
+        except Exception:
+            return error_response("Fee record not found.", status.HTTP_404_NOT_FOUND)
+        ser = serializers.StudentFeeDetailSerializer(fee)
+        return success_response(ser.data, "Fee detail fetched.")
+
+
+class AccountantCollectView(APIView):
+    """
+    POST /api/fees/accountant/collect/
+
+    Record a fee payment (cash / transfer / eSewa / Khalti / …).
+    Auto-generates a receipt (RCT-YYYY-XXXX).
+
+    Body:
+        student_fee      (UUID)
+        amount           (decimal)
+        payment_method   (CASH | BANK_TRANSFER | ESEWA | KHALTI | CARD | CHEQUE)
+        reference_number (optional string)
+        remarks          (optional string)
+    """
+
+    permission_classes = [IsAuthenticated, HasPermission("pay_fee")]
+
+    def post(self, request):
+        ser = serializers.PayFeeSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        payment = services.pay_fee(actor=request.user, **ser.validated_data)
+        return success_response(
+            serializers.PaymentSerializer(payment).data,
+            "Payment recorded and receipt generated.",
+            status.HTTP_201_CREATED,
+        )
+
+
+class AccountantRefundView(APIView):
+    """
+    POST /api/fees/accountant/refund/<payment_pk>/
+
+    Refund a previously recorded payment.  The fee's paid/due amounts are
+    recomputed atomically; the original payment + receipt are retained for audit.
+
+    Body:
+        reason  (optional string)
+    """
+
+    permission_classes = [IsAuthenticated, HasPermission("refund_payment")]
+
+    def post(self, request, pk):
+        try:
+            payment = Payment.objects.get(pk=pk)
+        except Payment.DoesNotExist:
+            return error_response("Payment not found.", status.HTTP_404_NOT_FOUND)
+
+        ser = serializers.RefundSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        payment = services.refund_payment(
+            payment, reason=ser.validated_data["reason"], actor=request.user
+        )
+        return success_response(
+            serializers.PaymentSerializer(payment).data,
+            "Payment refunded successfully.",
+        )
+
+
+class AccountantReceiptListView(APIView):
+    """
+    GET /api/fees/accountant/receipts/
+
+    Receipts for a specific student or student-fee record.
+
+    Query params:
+        student_fee  — UUID of the StudentFee (optional)
+        student      — UUID of the Student    (optional)
+    """
+
+    permission_classes = [IsAuthenticated, HasPermission("view_receipt")]
+
+    def get(self, request):
+        qs = Receipt.objects.select_related(
+            "payment__student_fee__student__user", "payment__paid_by"
+        ).order_by("-generated_at")
+
+        student_fee_id = request.query_params.get("student_fee")
+        student_id = request.query_params.get("student")
+
+        if student_fee_id:
+            qs = qs.filter(payment__student_fee_id=student_fee_id)
+        if student_id:
+            qs = qs.filter(payment__student_fee__student_id=student_id)
+
+        ser = serializers.ReceiptSerializer(qs, many=True)
+        return success_response(ser.data, f"{qs.count()} receipt(s) found.")
+
+
+class AccountantDailyReportView(APIView):
+    """
+    GET /api/fees/accountant/daily-report/
+
+    Date-ranged collection report — every non-refunded payment in the window.
+    Defaults to today's collections when no dates are supplied.
+
+    Query params:
+        date_from  (YYYY-MM-DD, optional — defaults to today)
+        date_to    (YYYY-MM-DD, optional — defaults to today)
+    """
+
+    permission_classes = [IsAuthenticated, HasPermission("view_payment")]
+
+    def get(self, request):
+        qser = serializers.CollectionReportQuerySerializer(
+            data=request.query_params
+        )
+        qser.is_valid(raise_exception=True)
+
+        date_from = qser.validated_data.get("date_from")
+        date_to = qser.validated_data.get("date_to")
+
+        payments = selectors.daily_collection_report(
+            date_from=date_from, date_to=date_to
+        )
+        by_method = selectors.collection_summary_by_method(
+            date_from=date_from, date_to=date_to
+        )
+
+        data = {
+            "period": {
+                "date_from": str(date_from) if date_from else "today",
+                "date_to": str(date_to) if date_to else "today",
+            },
+            "total_collected": sum(
+                p.amount for p in payments if not p.is_refunded
+            ),
+            "total_transactions": payments.count(),
+            "breakdown_by_method": by_method,
+            "transactions": serializers.DailyCollectionEntrySerializer(
+                payments, many=True
+            ).data,
+        }
+        return success_response(data, "Daily collection report.")
+
+
+class AccountantDashboardView(APIView):
+    """
+    GET /api/fees/accountant/dashboard/
+
+    High-level financial snapshot: total charged, collected, outstanding,
+    count by status, and today's collection summary.
+    """
+
+    permission_classes = [IsAuthenticated, HasPermission("view_student_fee")]
+
+    def get(self, request):
+        stats = selectors.fee_dashboard_stats()
+        today_by_method = selectors.collection_summary_by_method()  # defaults to today
+
+        data = {
+            **stats,
+            "today_collection": today_by_method,
+            "pending_count": selectors.pending_fees().count(),
+            "overdue_count": selectors.overdue_fees().count(),
+        }
+        return success_response(data, "Accountant dashboard.")
