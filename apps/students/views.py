@@ -64,7 +64,6 @@ class StudentViewSet(BaseRBACViewSet):
             registration_number=v["registration_number"],
             profile={k: v[k] for k in profile_keys},
             program=v["program"],
-            enrollment_date=v["enrollment_date"],
             actor=request.user,
         )
         temporary_password = student.temporary_password  # transient, set by service

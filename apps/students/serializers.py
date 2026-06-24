@@ -133,8 +133,8 @@ class AdmissionSerializer(serializers.Serializer):
     registration_number = serializers.CharField(max_length=50)
 
     # enrollment — admin picks program; system resolves the rest
+    # (enrollment_date is derived from admission_date in the service).
     program = serializers.PrimaryKeyRelatedField(queryset=Program.objects.all())
-    enrollment_date = serializers.DateField()
 
 
 

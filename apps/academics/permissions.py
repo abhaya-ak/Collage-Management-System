@@ -39,4 +39,3 @@ SECTION_PERMISSIONS = {
 CURRICULUM_PERMISSIONS = _view_manage("curriculum")
 ROUTINE_PERMISSIONS = _view_manage("routine")
 ACADEMIC_LEAVE_PERMISSIONS = _view_manage("academic_leave")
-

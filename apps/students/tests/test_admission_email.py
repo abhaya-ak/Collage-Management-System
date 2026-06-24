@@ -73,7 +73,6 @@ class AdmissionEmailAPITests(APITestCase):
             "admission_date": "2026-01-10",
             "registration_number": "REG-2026-001",
             "program": str(self.program.id),
-            "enrollment_date": "2026-01-10",
         }
         body.update(over)
         return body
@@ -84,6 +83,14 @@ class AdmissionEmailAPITests(APITestCase):
         self.assertEqual(res.status_code, 201, res.data)
         student = Student.objects.get(registration_number="REG-2026-001")
         self.assertEqual(student.user.email, "ram.sharma@college.edu")
+
+    def test_enrollment_date_defaults_to_admission_date(self):
+        res = self.client.post(self.url, self._payload(), format="json")
+        self.assertEqual(res.status_code, 201, res.data)
+        student = Student.objects.get(registration_number="REG-2026-001")
+        enrollment = student.enrollments.get()
+        self.assertEqual(str(enrollment.enrollment_date), "2026-01-10")
+        self.assertEqual(enrollment.enrollment_date, student.admission_date)
 
     def test_generated_email_returned_in_response(self):
         res = self.client.post(self.url, self._payload(), format="json")

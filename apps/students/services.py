@@ -148,7 +148,7 @@ def find_available_section(*, program, semester) -> Section:
 # Admission Service — the core flow
 # =============================================================
 @transaction.atomic
-def admit_student(*, registration_number, profile, program, enrollment_date, actor=None):
+def admit_student(*, registration_number, profile, program, actor=None):
     """
     One transaction:
       1. Validate uniqueness
@@ -182,6 +182,9 @@ def admit_student(*, registration_number, profile, program, enrollment_date, act
         )
 
     section = find_available_section(program=program, semester=semester)
+    # Admission, enrollment, and section placement happen together:
+    # enrollment_date is always the admission date.
+    enrollment_date = profile["admission_date"]
     # ---------------------------------------------------------------------
 
     user = User.objects.create_user(
