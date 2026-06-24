@@ -105,11 +105,20 @@ class ChangeSectionSerializer(serializers.Serializer):
 
 
 class AdmissionSerializer(serializers.Serializer):
-    """Input for POST /students/admission/ — account + profile + initial enrollment."""
+    """
+    Input for POST /students/admission/ — account + profile + program.
 
-    # account
-    account_email = serializers.EmailField()
-    password = serializers.CharField(write_only=True)
+    academic_year, semester, and section are NO LONGER required from the caller.
+    The service layer auto-resolves them:
+        academic_year → current AcademicYear (is_current=True)
+        semester      → Semester 1 (number=1)
+        section       → first alphabetical section with available capacity
+
+    account_email (login) and password are also NOT accepted — both are generated
+    automatically and returned in the response (the temp password once).
+    """
+
+    # account — login email + temporary password are system-generated
 
     # profile
     first_name = serializers.CharField(max_length=100)
@@ -123,25 +132,10 @@ class AdmissionSerializer(serializers.Serializer):
     admission_date = serializers.DateField()
     registration_number = serializers.CharField(max_length=50)
 
-    # initial enrollment
-    academic_year = serializers.PrimaryKeyRelatedField(queryset=AcademicYear.objects.all())
+    # enrollment — admin picks program; system resolves the rest
     program = serializers.PrimaryKeyRelatedField(queryset=Program.objects.all())
-    semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.all())
-    section = serializers.PrimaryKeyRelatedField(queryset=Section.objects.all())
     enrollment_date = serializers.DateField()
 
-    def validate_password(self, value):
-        validate_password(value)
-        return value
-
-    def validate(self, attrs):
-        section = attrs["section"]
-        if (section.program_id != attrs["program"].id
-                or section.semester_id != attrs["semester"].id):
-            raise serializers.ValidationError(
-                {"section": "Section does not belong to the selected program/semester."}
-            )
-        return attrs
 
 
 # --- student self-service reads ---------------------------------------------

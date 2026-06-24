@@ -109,3 +109,77 @@ class AcademicLeaveSerializer(serializers.ModelSerializer):
         if start and end and end < start:
             raise serializers.ValidationError({"end_date": "End date cannot be before start date."})
         return attrs
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Section Recommendation
+# ---------------------------------------------------------------------------
+class SectionRecommendationSerializer(serializers.Serializer):
+    """Output for GET /api/students/recommend-section/"""
+    section_id   = serializers.UUIDField(source="section.id")
+    section_name = serializers.CharField(source="section.name")
+    occupancy    = serializers.IntegerField()
+    capacity     = serializers.IntegerField()
+    is_unlimited = serializers.SerializerMethodField()
+    fill_pct     = serializers.SerializerMethodField()
+
+    def get_is_unlimited(self, obj):
+        return obj["capacity"] == 0
+
+    def get_fill_pct(self, obj):
+        if obj["capacity"] == 0:
+            return 0.0
+        return round(obj["occupancy"] / obj["capacity"] * 100, 1)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Bulk Promotion
+# ---------------------------------------------------------------------------
+class BulkPromoteSerializer(serializers.Serializer):
+    """Input for POST /api/students/bulk-promote/"""
+    academic_year = serializers.PrimaryKeyRelatedField(
+        queryset=AcademicYear.objects.all()
+    )
+    program      = serializers.PrimaryKeyRelatedField(
+        queryset=Program.objects.all()
+    )
+    from_semester = serializers.PrimaryKeyRelatedField(
+        queryset=Semester.objects.all()
+    )
+    to_semester   = serializers.PrimaryKeyRelatedField(
+        queryset=Semester.objects.all()
+    )
+
+    def validate(self, attrs):
+        if attrs["from_semester"].number >= attrs["to_semester"].number:
+            raise serializers.ValidationError(
+                {"to_semester": "Target semester must be higher than the source semester."}
+            )
+        return attrs
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Capacity Dashboard
+# ---------------------------------------------------------------------------
+class SectionCapacitySerializer(serializers.ModelSerializer):
+    """Output for GET /api/academics/sections/capacity/"""
+    program      = serializers.CharField(source="program.code")
+    semester     = serializers.IntegerField(source="semester.number")
+    active_count = serializers.IntegerField(read_only=True)   # annotated
+    fill_pct     = serializers.FloatField(read_only=True)     # annotated
+    status       = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Section
+        fields = ["id", "program", "semester", "name", "capacity",
+                  "active_count", "fill_pct", "status"]
+
+    def get_status(self, obj):
+        if obj.capacity == 0:
+            return "UNLIMITED"
+        if obj.active_count >= obj.capacity:
+            return "FULL"
+        if obj.active_count >= obj.capacity * 0.9:
+            return "ALMOST_FULL"
+        return "AVAILABLE"
+

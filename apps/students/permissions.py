@@ -9,6 +9,10 @@ STUDENT_PERMISSIONS = {
     "promote": "promote_student",
     "enroll": "manage_enrollment",
     "change_section": "manage_enrollment",
+    # Phase 2 — section recommendation (read-only, same as view_student)
+    "recommend_section": "view_student",
+    # Phase 3 — bulk promotion
+    "bulk_promote": "promote_student",
     # student self-service (scoped to request.user's own record)
     "me": "view_own_profile",
     "my_attendance": "view_own_attendance",

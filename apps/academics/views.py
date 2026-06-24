@@ -3,6 +3,8 @@ Academics viewsets — thin. Queryset from selectors, writes via services,
 RBAC via permission_map, standardized responses from BaseRBACViewSet.
 """
 
+from rest_framework.decorators import action
+
 from apps.academics import permissions as perms
 from apps.academics import selectors, serializers, services
 from apps.academics.models import (
@@ -13,6 +15,7 @@ from apps.academics.models import (
     Semester,
     Subject,
 )
+from shared.responses import success_response
 from shared.viewsets import BaseRBACViewSet
 
 
@@ -89,6 +92,25 @@ class SectionViewSet(BaseRBACViewSet):
 
     def perform_update(self, serializer):
         serializer.instance = services.update_instance(serializer.instance, serializer.validated_data)
+
+    # --- Phase 4: Capacity Dashboard ----------------------------------------
+    @action(detail=False, methods=["get"], url_path="capacity")
+    def capacity(self, request):
+        """
+        GET /api/academics/sections/capacity/
+        GET /api/academics/sections/capacity/?program=<uuid>
+        GET /api/academics/sections/capacity/?semester=<uuid>
+        GET /api/academics/sections/capacity/?program=<uuid>&semester=<uuid>
+
+        Returns all sections with live occupancy stats.
+        Permission: view_section (same as list).
+        """
+        qs = selectors.get_section_capacity_stats(
+            program_id=request.query_params.get("program"),
+            semester_id=request.query_params.get("semester"),
+        )
+        data = serializers.SectionCapacitySerializer(qs, many=True).data
+        return success_response(data, "Section capacity stats.")
 
 
 class ProgramSemesterSubjectViewSet(BaseRBACViewSet):

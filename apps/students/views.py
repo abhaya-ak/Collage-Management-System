@@ -59,19 +59,20 @@ class StudentViewSet(BaseRBACViewSet):
         v = ser.validated_data
         profile_keys = ["first_name", "middle_name", "last_name", "gender",
                         "date_of_birth", "email", "phone", "address", "admission_date"]
-        enrollment_keys = ["academic_year", "program", "semester", "section", "enrollment_date"]
 
         student = services.admit_student(
-            account_email=v["account_email"],
-            password=v["password"],
             registration_number=v["registration_number"],
             profile={k: v[k] for k in profile_keys},
-            enrollment={k: v[k] for k in enrollment_keys},
+            program=v["program"],
+            enrollment_date=v["enrollment_date"],
             actor=request.user,
         )
+        temporary_password = student.temporary_password  # transient, set by service
         data = serializers.StudentDetailSerializer(
             selectors.get_student_profile(student.pk)
         ).data
+        # Surface generated credentials once (admin relays to the student).
+        data["temporary_password"] = temporary_password
         return success_response(data, "Student admitted successfully.", 201)
 
     @action(detail=True, methods=["post"])
@@ -106,6 +107,67 @@ class StudentViewSet(BaseRBACViewSet):
             serializers.EnrollmentReadSerializer(enrollment).data,
             "Section changed successfully.",
         )
+
+    # --- Phase 2: Section Recommendation ------------------------------------
+    @action(detail=False, methods=["get"], url_path="recommend-section")
+    def recommend_section(self, request):
+        """
+        GET /api/students/recommend-section/?program=<uuid>&semester=<uuid>
+
+        Returns the recommended section (first available alphabetically) with
+        current occupancy. Used as a UI hint on the Promote / Enroll forms.
+        No row lock — advisory only.
+        """
+        from apps.academics.models import Program, Semester
+        from apps.academics.serializers import SectionRecommendationSerializer
+
+        program_id = request.query_params.get("program")
+        semester_id = request.query_params.get("semester")
+
+        if not program_id or not semester_id:
+            return error_response("Both 'program' and 'semester' query params are required.", 400)
+
+        program = Program.objects.filter(pk=program_id).first()
+        semester = Semester.objects.filter(pk=semester_id).first()
+
+        if not program:
+            return error_response("Program not found.", 404)
+        if not semester:
+            return error_response("Semester not found.", 404)
+
+        result = services.recommend_section(program=program, semester=semester)
+        return success_response(
+            SectionRecommendationSerializer(result).data,
+            f"Recommended section: {result['section'].name}",
+        )
+
+    # --- Phase 3: Bulk Promotion --------------------------------------------
+    @action(detail=False, methods=["post"], url_path="bulk-promote")
+    def bulk_promote(self, request):
+        """
+        POST /api/students/bulk-promote/
+
+        Promotes all ACTIVE students in (program, from_semester) to to_semester,
+        auto-allocating sections. Returns a summary of promoted/failed counts.
+        Individual failures do not abort the batch.
+        """
+        from apps.academics.serializers import BulkPromoteSerializer
+
+        ser = BulkPromoteSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
+
+        result = services.bulk_promote_students(
+            academic_year=v["academic_year"],
+            program=v["program"],
+            from_semester=v["from_semester"],
+            to_semester=v["to_semester"],
+            actor=request.user,
+        )
+        return success_response(result, (
+            f"Bulk promotion complete: {result['promoted']} promoted, "
+            f"{result['failed']} failed."
+        ))
 
     # --- student self-service (the logged-in student's own data) ------------
     def _own_student(self, request):

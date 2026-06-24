@@ -11,9 +11,15 @@ Rules enforced here:
     * promotion preserves history (old ACTIVE -> PROMOTED, new ACTIVE created)
 """
 
+import re
+import secrets
+import string
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from apps.academics.models import Section, Semester
+from apps.academics.selectors import get_current_academic_year
 from apps.accounts.services import assign_role
 from apps.core.enums import AuditEvent, EnrollmentStatus, UserRole
 from apps.core.exceptions import InvalidOperation, ValidationException
@@ -47,21 +53,136 @@ def generate_student_id(year: int) -> str:
 
 
 # =============================================================
+# Institutional login email generation — SERVICE-ONLY
+# =============================================================
+EMAIL_DOMAIN = "college.edu"
+
+
+def _name_to_local_part(*name_parts) -> str:
+    """
+    Normalize name parts into an email local part:
+      lowercase, trim, strip special chars, collapse spaces -> dot-separated.
+      "Ram  Bahadur", "Sharma" -> "ram.bahadur.sharma"
+    """
+    text = " ".join(p for p in name_parts if p).lower().strip()
+    text = re.sub(r"[^a-z0-9\s]", "", text)   # drop special characters
+    tokens = text.split()                     # collapses multiple spaces
+    return ".".join(tokens)
+
+
+def generate_account_email(first_name: str, last_name: str) -> str:
+    """
+    Generate a unique institutional login email from the student's name.
+    Uniqueness is checked against ALL users (including soft-deleted) and a
+    numeric suffix is appended until free:
+        ram.sharma@college.edu -> ram.sharma1@college.edu -> ram.sharma2@...
+    """
+    base = _name_to_local_part(first_name, last_name) or "student"
+    candidate = f"{base}@{EMAIL_DOMAIN}"
+    suffix = 0
+    while User.all_objects.filter(email__iexact=candidate).exists():
+        suffix += 1
+        candidate = f"{base}{suffix}@{EMAIL_DOMAIN}"
+    return candidate
+
+
+def generate_temporary_password(length: int = 10) -> str:
+    """
+    Generate a strong random temporary password (returned once to the admin).
+    Guarantees at least one lowercase, uppercase, digit, and symbol so it passes
+    typical password validators; the student changes it on first login.
+    """
+    alphabet = string.ascii_letters + string.digits
+    symbols = "@#$%&*"
+    while True:
+        core = "".join(secrets.choice(alphabet) for _ in range(length - 1))
+        pw = core + secrets.choice(symbols)
+        if (any(c.islower() for c in pw) and any(c.isupper() for c in pw)
+                and any(c.isdigit() for c in pw)):
+            return pw
+
+
+# =============================================================
+# Section allocation helper
+# =============================================================
+def find_available_section(*, program, semester) -> Section:
+    """
+    Alphabetically scan sections for the given program + semester and return
+    the first one that has capacity remaining (active enrolments < capacity).
+
+    Rules:
+      - Sections are ordered alphabetically by name (A before B before C…).
+      - Only non-deleted active StudentEnrollments count toward capacity.
+      - Soft-deleted enrolments are excluded automatically (SoftDeleteMixin
+        manager filters them out).
+      - Raises ValidationException if every section is at capacity so the
+        admin knows to create a new section.
+    """
+    sections = (
+        Section.objects
+        .filter(program=program, semester=semester)
+        .order_by("name")          # A, B, C …
+    )
+    if not sections.exists():
+        raise ValidationException(
+            f"No sections found for {program.code} Semester {semester.number}. "
+            "Please create at least one section before admitting students."
+        )
+
+    for section in sections:
+        active_count = StudentEnrollment.objects.filter(
+            section=section,
+            status=EnrollmentStatus.ACTIVE,
+        ).count()
+        if section.capacity > 0 and active_count < section.capacity:
+            return section
+
+    raise ValidationException(
+        f"No available section capacity for {program.code} "
+        f"Semester {semester.number}. "
+        "All sections are full — please create a new section."
+    )
+
+
+# =============================================================
 # Admission Service — the core flow
 # =============================================================
 @transaction.atomic
-def admit_student(*, account_email, password, registration_number, profile, enrollment, actor=None):
+def admit_student(*, registration_number, profile, program, enrollment_date, actor=None):
     """
     One transaction:
-      1. create CustomUser
-      2. create Student (+ generated student_id)
-      3. create initial ACTIVE StudentEnrollment
-      4. assign default role STUDENT
+      1. Validate uniqueness
+      2. Generate institutional login email + temporary password + create CustomUser
+      3. Generate student_id
+      4. Create Student profile
+      5. Auto-resolve: current academic year, Semester 1, available section
+      6. Create initial ACTIVE StudentEnrollment
+      7. Assign STUDENT role
+      8. Audit log
+
+    Returns the Student with a transient `temporary_password` attribute (the
+    plaintext is never stored — surfaced once for the admin to relay).
     """
-    if User.all_objects.filter(email__iexact=account_email).exists():
-        raise ValidationException("A user with this account email already exists.")
     if Student.all_objects.filter(registration_number=registration_number).exists():
         raise ValidationException("A student with this registration number already exists.")
+
+    # Login email + temporary password are generated by the system.
+    account_email = generate_account_email(
+        profile.get("first_name", ""), profile.get("last_name", "")
+    )
+    password = generate_temporary_password()
+
+    # --- auto-resolve enrollment context ---------------------------------
+    academic_year = get_current_academic_year()
+
+    semester = Semester.objects.filter(number=1).first()
+    if semester is None:
+        raise InvalidOperation(
+            "Semester 1 does not exist. Please create semesters before admitting students."
+        )
+
+    section = find_available_section(program=program, semester=semester)
+    # ---------------------------------------------------------------------
 
     user = User.objects.create_user(
         email=account_email,
@@ -79,7 +200,13 @@ def admit_student(*, account_email, password, registration_number, profile, enro
     )
 
     initial = StudentEnrollment.objects.create(
-        student=student, status=EnrollmentStatus.ACTIVE, **enrollment
+        student=student,
+        academic_year=academic_year,
+        program=program,
+        semester=semester,
+        section=section,
+        status=EnrollmentStatus.ACTIVE,
+        enrollment_date=enrollment_date,
     )
 
     assign_role(user, UserRole.STUDENT)
@@ -90,9 +217,15 @@ def admit_student(*, account_email, password, registration_number, profile, enro
         metadata={
             "student_id": student.student_id,
             "registration_number": student.registration_number,
+            "academic_year": academic_year.name,
+            "program": program.code,
+            "semester": semester.number,
+            "section": section.name,
             "enrollment_id": str(initial.pk),
         },
     )
+    # Transient (not persisted) — surfaced once in the admission response.
+    student.temporary_password = password
     return student
 
 
