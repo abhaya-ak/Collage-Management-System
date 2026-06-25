@@ -56,6 +56,7 @@ class LoginView(APIView):
         data = {
             "tokens": _tokens_for(user),
             "user": UserSerializer(user).data,
+            "must_change_password": user.must_change_password,
         }
         return success_response(data=data, message="Login successful.")
 

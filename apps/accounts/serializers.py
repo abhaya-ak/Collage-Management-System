@@ -77,6 +77,7 @@ class UserSerializer(serializers.ModelSerializer):
             "is_active",
             "is_staff",
             "is_superuser",
+            "must_change_password",
             "roles",
             "permissions",
             "last_login",
@@ -100,10 +101,11 @@ class UserSerializer(serializers.ModelSerializer):
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True)
-    confirm_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True, required=False)
 
     def validate(self, attrs):
-        if attrs["new_password"] != attrs["confirm_password"]:
+        confirm = attrs.get("confirm_password")
+        if confirm is not None and attrs["new_password"] != confirm:
             raise serializers.ValidationError(
                 {"confirm_password": "Passwords do not match."}
             )

@@ -42,6 +42,7 @@ class CustomUser(AbstractBaseUser, BaseModel, SoftDeleteMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)  # can access Django admin
     is_superuser = models.BooleanField(default=False)  # full access bypass
+    must_change_password = models.BooleanField(default=False)  # force change on first login
 
     roles = models.ManyToManyField(
         "Role", through="UserRole", related_name="users", blank=True

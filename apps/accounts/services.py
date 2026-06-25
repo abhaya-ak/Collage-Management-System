@@ -42,7 +42,8 @@ def change_password(user: CustomUser, old_password: str, new_password: str) -> C
     except DjangoValidationError as exc:
         raise ValidationException(list(exc.messages))
     user.set_password(new_password)
-    user.save(update_fields=["password", "updated_at"])
+    user.must_change_password = False  # first-login requirement satisfied
+    user.save(update_fields=["password", "must_change_password", "updated_at"])
     return user
 
 

@@ -84,7 +84,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -154,6 +154,22 @@ AUTH_PASSWORD_VALIDATORS = [
 # CUSTOM USER MODEL
 # =============================================================
 AUTH_USER_MODEL = 'accounts.CustomUser'
+
+# =============================================================
+# EMAIL
+# Dev default: console backend (prints to terminal, no SMTP).
+# Prod: set EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+#       plus EMAIL_HOST / EMAIL_HOST_USER / EMAIL_HOST_PASSWORD in .env
+# =============================================================
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend'
+)
+EMAIL_HOST = config('EMAIL_HOST', default='')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='College <noreply@college.edu>')
 
 # =============================================================
 # INTERNATIONALIZATION

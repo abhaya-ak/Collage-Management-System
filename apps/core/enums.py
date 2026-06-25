@@ -120,6 +120,7 @@ class AuditEvent(TextChoices):
     PROFILE_UPDATED = "profile_updated", "Profile Updated"
     # students domain
     STUDENT_ADMITTED = "student_admitted", "Student Admitted"
+    CREDENTIALS_RESENT = "credentials_resent", "Credentials Resent"
     STUDENT_PROMOTED = "student_promoted", "Student Promoted"
     ENROLLMENT_CREATED = "enrollment_created", "Enrollment Created"
     SECTION_CHANGED = "section_changed", "Section Changed"

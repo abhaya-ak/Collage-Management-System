@@ -11,6 +11,7 @@ Rules enforced here:
     * promotion preserves history (old ACTIVE -> PROMOTED, new ACTIVE created)
 """
 
+import logging
 import re
 import secrets
 import string
@@ -20,6 +21,7 @@ from django.db import transaction
 
 from apps.academics.models import Section, Semester
 from apps.academics.selectors import get_current_academic_year
+from apps.accounts.email_service import send_student_credentials
 from apps.accounts.services import assign_role
 from apps.core.enums import AuditEvent, EnrollmentStatus, UserRole
 from apps.core.exceptions import InvalidOperation, ValidationException
@@ -28,6 +30,7 @@ from apps.students.models import Student, StudentEnrollment
 from apps.students.selectors import get_active_enrollment
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 # =============================================================
@@ -192,6 +195,7 @@ def admit_student(*, registration_number, profile, program, actor=None):
         password=password,
         first_name=profile.get("first_name", ""),
         last_name=profile.get("last_name", ""),
+        must_change_password=True,  # force change of the temporary password
     )
 
     student_id = generate_student_id(profile["admission_date"].year)
@@ -227,8 +231,62 @@ def admit_student(*, registration_number, profile, program, actor=None):
             "enrollment_id": str(initial.pk),
         },
     )
+    # Send credentials ONLY after the transaction commits (never before) so we
+    # never email a student whose admission was rolled back. Email failure is
+    # logged but must not fail the admission.
+    def _send_credentials():
+        try:
+            send_student_credentials(
+                to_email=student.email,
+                student_name=student.full_name,
+                student_id=student.student_id,
+                login_email=account_email,
+                temporary_password=password,
+            )
+        except Exception:  # noqa: BLE001 — best-effort; admission already committed
+            logger.exception(
+                "Failed to send credentials email for %s", student.student_id
+            )
+
+    transaction.on_commit(_send_credentials)
+
     # Transient (not persisted) — surfaced once in the admission response.
     student.temporary_password = password
+    return student
+
+
+@transaction.atomic
+def resend_credentials(student, *, actor=None):
+    """
+    Admin re-issues a student's credentials: generates a NEW temporary password
+    (the original is hashed and unrecoverable), forces a change on next login,
+    and re-sends the welcome email. Returns the student with a transient
+    `temporary_password`.
+    """
+    user = student.user
+    new_password = generate_temporary_password()
+    user.set_password(new_password)
+    user.must_change_password = True
+    user.save(update_fields=["password", "must_change_password", "updated_at"])
+
+    def _send():
+        try:
+            send_student_credentials(
+                to_email=student.email,
+                student_name=student.full_name,
+                student_id=student.student_id,
+                login_email=user.email,
+                temporary_password=new_password,
+            )
+        except Exception:  # noqa: BLE001 — best-effort
+            logger.exception("Failed to resend credentials for %s", student.student_id)
+
+    transaction.on_commit(_send)
+    log_audit(
+        action=AuditEvent.CREDENTIALS_RESENT, actor=actor, instance=student,
+        metadata={"student_id": student.student_id, "login_email": user.email},
+    )
+    student.temporary_password = new_password
     return student
 
 

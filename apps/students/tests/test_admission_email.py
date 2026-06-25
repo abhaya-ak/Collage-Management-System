@@ -1,8 +1,10 @@
 """Auto-generated institutional login email during admission."""
 
 from datetime import date
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -83,6 +85,76 @@ class AdmissionEmailAPITests(APITestCase):
         self.assertEqual(res.status_code, 201, res.data)
         student = Student.objects.get(registration_number="REG-2026-001")
         self.assertEqual(student.user.email, "ram.sharma@college.edu")
+
+    def test_credential_email_sent_on_admission(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post(self.url, self._payload(), format="json")
+        self.assertEqual(res.status_code, 201, res.data)
+        temp_pw = res.data["data"]["temporary_password"]
+
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.subject, "Welcome to College")
+        self.assertEqual(email.to, ["ram.personal@gmail.com"])   # personal email
+        # credentials included correctly
+        self.assertIn("ram.sharma@college.edu", email.body)       # login email
+        self.assertIn(temp_pw, email.body)                        # temp password
+        self.assertIn(res.data["data"]["student_id"], email.body)
+
+    def test_admission_succeeds_if_email_fails(self):
+        with patch(
+            "django.core.mail.EmailMultiAlternatives.send", side_effect=Exception("smtp down")
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                res = self.client.post(self.url, self._payload(), format="json")
+        # admission must still succeed even though the email send blew up
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertTrue(
+            Student.objects.filter(registration_number="REG-2026-001").exists()
+        )
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_resend_credentials_new_password_and_email(self):
+        admit = self.client.post(self.url, self._payload(), format="json")
+        student_pk = admit.data["data"]["id"]
+        old_pw = admit.data["data"]["temporary_password"]
+        mail.outbox.clear()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post(
+                f"/api/students/{student_pk}/resend-credentials/", {}, format="json"
+            )
+        self.assertEqual(res.status_code, 200, res.data)
+        new_pw = res.data["data"]["temporary_password"]
+        self.assertNotEqual(new_pw, old_pw)                 # fresh password
+        self.assertEqual(len(mail.outbox), 1)               # re-emailed
+        self.assertIn("ram.sharma@college.edu", mail.outbox[0].body)
+
+        # new password works; flag re-set
+        student = Student.objects.get(pk=student_pk)
+        self.assertTrue(student.user.must_change_password)
+        self.client.force_authenticate(user=None)
+        login = self.client.post(
+            reverse("accounts:login"),
+            {"email": "ram.sharma@college.edu", "password": new_pw}, format="json",
+        )
+        self.assertEqual(login.status_code, 200, login.data)
+
+    def test_resend_credentials_forbidden_for_non_admin(self):
+        admit = self.client.post(self.url, self._payload(), format="json")
+        student_pk = admit.data["data"]["id"]
+        nobody = User.objects.create_user(email="nobody@college.edu", password="StrongP@ss9")
+        self.client.force_authenticate(user=nobody)
+        res = self.client.post(
+            f"/api/students/{student_pk}/resend-credentials/", {}, format="json"
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_admission_sets_must_change_password(self):
+        res = self.client.post(self.url, self._payload(), format="json")
+        self.assertEqual(res.status_code, 201, res.data)
+        student = Student.objects.get(registration_number="REG-2026-001")
+        self.assertTrue(student.user.must_change_password)
 
     def test_enrollment_date_defaults_to_admission_date(self):
         res = self.client.post(self.url, self._payload(), format="json")

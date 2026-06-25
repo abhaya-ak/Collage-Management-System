@@ -74,6 +74,19 @@ class StudentViewSet(BaseRBACViewSet):
         data["temporary_password"] = temporary_password
         return success_response(data, "Student admitted successfully.", 201)
 
+    @action(detail=True, methods=["post"], url_path="resend-credentials")
+    def resend_credentials(self, request, pk=None):
+        student = self.get_object()
+        student = services.resend_credentials(student, actor=request.user)
+        return success_response(
+            {
+                "student_id": student.student_id,
+                "account_email": student.user.email,
+                "temporary_password": student.temporary_password,
+            },
+            "Credentials resent successfully.",
+        )
+
     @action(detail=True, methods=["post"])
     def promote(self, request, pk=None):
         student = self.get_object()

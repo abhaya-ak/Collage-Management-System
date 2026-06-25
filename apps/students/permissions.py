@@ -6,6 +6,7 @@ STUDENT_PERMISSIONS = {
     "update": "update_student",
     "partial_update": "update_student",
     "admission": "admit_student",
+    "resend_credentials": "admit_student",
     "promote": "promote_student",
     "enroll": "manage_enrollment",
     "change_section": "manage_enrollment",
